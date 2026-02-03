@@ -1,0 +1,83 @@
+{
+    "appId": "com.rosette.logispro",
+    "productName": "LogisPro",
+    "copyright": "Copyright © 2026 Rosette Exports",
+    "directories": {
+        "output": "release",
+        "buildResources": "build"
+    },
+    "files": [
+        "dist/**/*",
+        "electron/**/*",
+        "package.json"
+    ],
+    "mac": {
+        "category": "public.app-category.business",
+        "target": [
+            {
+                "target": "dmg",
+                "arch": [
+                    "x64",
+                    "arm64"
+                ]
+            },
+            {
+                "target": "zip",
+                "arch": [
+                    "x64",
+                    "arm64"
+                ]
+            }
+        ],
+        "icon": "build/icon.icns",
+        "hardenedRuntime": true,
+        "gatekeeperAssess": false,
+        "entitlements": "build/entitlements.mac.plist",
+        "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "win": {
+        "target": [
+            {
+                "target": "nsis",
+                "arch": [
+                    "x64",
+                    "ia32"
+                ]
+            },
+            {
+                "target": "portable",
+                "arch": [
+                    "x64"
+                ]
+            }
+        ],
+        "icon": "build/icon.ico",
+        "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+        "oneClick": false,
+        "perMachine": true,
+        "allowToChangeInstallationDirectory": true,
+        "deleteAppDataOnUninstall": false,
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true,
+        "shortcutName": "LogisPro",
+        "installerIcon": "build/icon.ico",
+        "uninstallerIcon": "build/icon.ico",
+        "license": "LICENSE.txt"
+    },
+    "linux": {
+        "target": [
+            "AppImage",
+            "deb",
+            "rpm"
+        ],
+        "category": "Office",
+        "icon": "build/icons"
+    },
+    "publish": {
+        "provider": "github",
+        "owner": "rosette",
+        "repo": "logispro"
+    }
+}

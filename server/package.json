@@ -1,0 +1,33 @@
+{
+    "name": "logispro-server",
+    "version": "1.0.0",
+    "description": "LogisPro Backend - Express + PostgreSQL + Redis",
+    "main": "src/index.js",
+    "type": "commonjs",
+    "scripts": {
+        "dev": "nodemon src/index.js",
+        "start": "node src/index.js",
+        "db:init": "node src/db/init.js",
+        "db:seed": "node src/db/seed.js"
+    },
+    "dependencies": {
+        "bcryptjs": "^2.4.3",
+        "better-sqlite3": "^12.6.2",
+        "bull": "^4.12.2",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.5",
+        "express": "^4.21.0",
+        "googleapis": "^171.0.0",
+        "ioredis": "^5.4.1",
+        "jsonwebtoken": "^9.0.2",
+        "multer": "^1.4.5-lts.1",
+        "node-cron": "^4.2.1",
+        "nodemailer": "^6.9.13",
+        "pg": "^8.11.5",
+        "socket.io": "^4.7.5",
+        "uuid": "^9.0.1"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.0"
+    }
+}
