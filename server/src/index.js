@@ -108,9 +108,10 @@ app.use((err, req, res, next) => {
 
 // Start server
 const PORT = process.env.PORT || 3001;
+const HOST = '0.0.0.0'; // Required for Railway/container deployment
 
-server.listen(PORT, async () => {
-    console.log(`\n🚀 LogisPro Server running on port ${PORT}`);
+server.listen(PORT, HOST, async () => {
+    console.log(`\n🚀 LogisPro Server running on ${HOST}:${PORT}`);
     console.log(`   Health: http://localhost:${PORT}/health`);
     console.log(`   API:    http://localhost:${PORT}/api\n`);
 
