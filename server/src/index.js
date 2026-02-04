@@ -31,14 +31,7 @@ const server = http.createServer(app);
 // Socket.io setup
 const io = new Server(server, {
     cors: {
-        origin: (origin, callback) => {
-            // Allow localhost on any port in development
-            if (!origin || origin.startsWith('http://localhost:')) {
-                callback(null, true);
-            } else {
-                callback(new Error('Not allowed by CORS'));
-            }
-        },
+        origin: '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
         credentials: true,
     },
@@ -49,14 +42,7 @@ app.set('io', io);
 
 // Middleware
 app.use(cors({
-    origin: (origin, callback) => {
-        // Allow localhost on any port in development
-        if (!origin || origin.startsWith('http://localhost:')) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
+    origin: '*',
     credentials: true,
 }));
 app.use(express.json());
