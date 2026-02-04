@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, User, Globe, Loader2 } from 'lucide-react';
+import { Bell, Search, User, Globe, Loader2, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
 
 interface HeaderProps {
     sidebarCollapsed: boolean;
@@ -32,12 +33,17 @@ interface SearchResult {
     };
 }
 
+// Get API URL from environment or default to localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 export function Header({ sidebarCollapsed }: HeaderProps) {
     const navigate = useNavigate();
+    const { user, logout } = useAuthStore();
     const [searchQuery, setSearchQuery] = useState('');
     const [searching, setSearching] = useState(false);
     const [results, setResults] = useState<SearchResult | null>(null);
     const [showResults, setShowResults] = useState(false);
+    const [showUserMenu, setShowUserMenu] = useState(false);
 
     // Static notification count
     const unreadAlerts = 3;
@@ -51,7 +57,7 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
 
         setSearching(true);
         try {
-            const res = await fetch(`http://localhost:3001/api/search?q=${encodeURIComponent(query)}`);
+            const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(query)}`);
             const data = await res.json();
 
             if (data.success) {
@@ -89,6 +95,11 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
         }
         setShowResults(false);
         setSearchQuery('');
+    };
+
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
     };
 
     return (
@@ -187,15 +198,41 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
                     )}
                 </Button>
 
-                {/* User Profile */}
-                <div className="flex items-center gap-3 pl-4 border-l border-[hsl(var(--border))]">
-                    <div className="text-right hidden sm:block">
-                        <p className="text-sm font-medium text-[hsl(var(--foreground))]">Admin User</p>
-                        <p className="text-xs text-[hsl(var(--muted-foreground))]">Export Manager</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                        <User className="w-5 h-5 text-white" />
-                    </div>
+                {/* User Profile with Menu */}
+                <div className="relative">
+                    <button
+                        onClick={() => setShowUserMenu(!showUserMenu)}
+                        className="flex items-center gap-3 pl-4 border-l border-[hsl(var(--border))] hover:opacity-80 transition-opacity"
+                    >
+                        <div className="text-right hidden sm:block">
+                            <p className="text-sm font-medium text-[hsl(var(--foreground))]">
+                                {user?.fullName || 'User'}
+                            </p>
+                            <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                                {user?.role || 'Staff'}
+                            </p>
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                            <User className="w-5 h-5 text-white" />
+                        </div>
+                    </button>
+
+                    {/* User Menu Dropdown */}
+                    {showUserMenu && (
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl overflow-hidden z-50">
+                            <div className="p-3 border-b border-[hsl(var(--border))]">
+                                <p className="text-sm font-medium text-[hsl(var(--foreground))]">{user?.fullName}</p>
+                                <p className="text-xs text-[hsl(var(--muted-foreground))]">{user?.email}</p>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="w-full px-3 py-2 flex items-center gap-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                            >
+                                <LogOut className="w-4 h-4" />
+                                Đăng xuất
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </header>

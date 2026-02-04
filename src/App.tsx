@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { MainLayout } from '@/components/layout';
+import { ProtectedRoute } from '@/components/auth';
 import { Dashboard } from '@/pages';
+import { LoginPage } from '@/pages/auth';
 import { ShipmentList, ShipmentDetail } from '@/pages/shipments';
 import { BookingList, BookingDetail } from '@/pages/bookings';
 import { DocumentList } from '@/pages/documents';
@@ -32,20 +34,26 @@ function App() {
       <NotificationListener />
 
       <Routes>
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="shipments" element={<ShipmentList />} />
-          <Route path="shipments/:id" element={<ShipmentDetail />} />
-          <Route path="bookings/fcl" element={<BookingList type="FCL" />} />
-          <Route path="bookings/air" element={<BookingList type="AIR" />} />
-          <Route path="bookings/:id" element={<BookingDetail />} />
-          <Route path="documents" element={<DocumentList />} />
-          <Route path="logistics" element={<LogisticsPage />} />
-          <Route path="vendors" element={<VendorsAndCosts />} />
-          <Route path="risks" element={<RiskDashboard />} />
-          <Route path="analytics" element={<AnalyticsPage />} />
-          <Route path="assistant" element={<AssistantPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+        {/* Public route */}
+        <Route path="/login" element={<LoginPage />} />
+
+        {/* Protected routes */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<MainLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="shipments" element={<ShipmentList />} />
+            <Route path="shipments/:id" element={<ShipmentDetail />} />
+            <Route path="bookings/fcl" element={<BookingList type="FCL" />} />
+            <Route path="bookings/air" element={<BookingList type="AIR" />} />
+            <Route path="bookings/:id" element={<BookingDetail />} />
+            <Route path="documents" element={<DocumentList />} />
+            <Route path="logistics" element={<LogisticsPage />} />
+            <Route path="vendors" element={<VendorsAndCosts />} />
+            <Route path="risks" element={<RiskDashboard />} />
+            <Route path="analytics" element={<AnalyticsPage />} />
+            <Route path="assistant" element={<AssistantPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>
@@ -53,4 +61,3 @@ function App() {
 }
 
 export default App;
-
