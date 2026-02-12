@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
 -- ============================================
 -- CUSTOMERS TABLE
@@ -96,9 +96,9 @@ CREATE TABLE IF NOT EXISTS shipments (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_shipments_status ON shipments(status);
-CREATE INDEX idx_shipments_customer ON shipments(customer_id);
-CREATE INDEX idx_shipments_number ON shipments(shipment_number);
+CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);
+CREATE INDEX IF NOT EXISTS idx_shipments_customer ON shipments(customer_id);
+CREATE INDEX IF NOT EXISTS idx_shipments_number ON shipments(shipment_number);
 
 -- ============================================
 -- BOOKINGS TABLE
@@ -133,8 +133,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_bookings_status ON bookings(status);
-CREATE INDEX idx_bookings_shipment ON bookings(shipment_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+CREATE INDEX IF NOT EXISTS idx_bookings_shipment ON bookings(shipment_id);
 
 -- ============================================
 -- BOOKING DEADLINES TABLE (Key for alerts)
@@ -164,8 +164,8 @@ CREATE TABLE IF NOT EXISTS booking_deadlines (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_booking_deadlines_status ON booking_deadlines(status);
-CREATE INDEX idx_booking_deadlines_booking ON booking_deadlines(booking_id);
+CREATE INDEX IF NOT EXISTS idx_booking_deadlines_status ON booking_deadlines(status);
+CREATE INDEX IF NOT EXISTS idx_booking_deadlines_booking ON booking_deadlines(booking_id);
 
 -- ============================================
 -- NOTIFICATIONS TABLE
@@ -196,8 +196,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   expires_at TIMESTAMP
 );
 
-CREATE INDEX idx_notifications_user ON notifications(user_id);
-CREATE INDEX idx_notifications_unread ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read);
 
 -- ============================================
 -- TASKS TABLE
@@ -223,9 +223,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_assigned ON tasks(assigned_to);
-CREATE INDEX idx_tasks_booking ON tasks(booking_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_tasks_booking ON tasks(booking_id);
 
 -- ============================================
 -- TRUCK DISPATCHES TABLE
@@ -251,8 +251,8 @@ CREATE TABLE IF NOT EXISTS truck_dispatches (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_truck_dispatches_booking ON truck_dispatches(booking_id);
-CREATE INDEX idx_truck_dispatches_status ON truck_dispatches(status);
+CREATE INDEX IF NOT EXISTS idx_truck_dispatches_booking ON truck_dispatches(booking_id);
+CREATE INDEX IF NOT EXISTS idx_truck_dispatches_status ON truck_dispatches(status);
 
 -- ============================================
 -- DOCUMENTS TABLE
@@ -282,8 +282,8 @@ CREATE TABLE IF NOT EXISTS documents (
   deleted_at TIMESTAMP -- Soft delete
 );
 
-CREATE INDEX idx_documents_shipment ON documents(shipment_id);
-CREATE INDEX idx_documents_type ON documents(document_type);
+CREATE INDEX IF NOT EXISTS idx_documents_shipment ON documents(shipment_id);
+CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(document_type);
 
 -- ============================================
 -- INVOICES TABLE
@@ -313,8 +313,8 @@ CREATE TABLE IF NOT EXISTS invoices (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_invoices_status ON invoices(status);
-CREATE INDEX idx_invoices_shipment ON invoices(shipment_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_shipment ON invoices(shipment_id);
 
 -- ============================================
 -- ALERTS TABLE (for risk dashboard)
@@ -337,8 +337,8 @@ CREATE TABLE IF NOT EXISTS alerts (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_alerts_severity ON alerts(severity);
-CREATE INDEX idx_alerts_resolved ON alerts(is_resolved);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
+CREATE INDEX IF NOT EXISTS idx_alerts_resolved ON alerts(is_resolved);
 
 -- ============================================
 -- SYNC STATUS TABLE (Google Drive integration)
@@ -368,8 +368,8 @@ CREATE TABLE IF NOT EXISTS backups (
   created_at TEXT DEFAULT (NOW())
 );
 
-CREATE INDEX idx_backups_provider ON backups(provider);
-CREATE INDEX idx_backups_type ON backups(backup_type);
+CREATE INDEX IF NOT EXISTS idx_backups_provider ON backups(provider);
+CREATE INDEX IF NOT EXISTS idx_backups_type ON backups(backup_type);
 
 -- ============================================
 -- DOCUMENT SYNC TABLE (Track synced documents)
@@ -399,9 +399,9 @@ CREATE TABLE IF NOT EXISTS licenses (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_licenses_key ON licenses(license_key);
-CREATE INDEX idx_licenses_user ON licenses(user_id);
-CREATE INDEX idx_licenses_status ON licenses(revoked, expires_at);
+CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses(license_key);
+CREATE INDEX IF NOT EXISTS idx_licenses_user ON licenses(user_id);
+CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(revoked, expires_at);
 
 -- DEVICE ACTIVATIONS TABLE
 CREATE TABLE IF NOT EXISTS device_activations (
@@ -416,9 +416,9 @@ CREATE TABLE IF NOT EXISTS device_activations (
   is_active BOOLEAN DEFAULT true
 );
 
-CREATE INDEX idx_device_activations_license ON device_activations(license_key);
-CREATE INDEX idx_device_activations_device ON device_activations(device_id);
-CREATE INDEX idx_device_activations_user ON device_activations(user_id);
+CREATE INDEX IF NOT EXISTS idx_device_activations_license ON device_activations(license_key);
+CREATE INDEX IF NOT EXISTS idx_device_activations_device ON device_activations(device_id);
+CREATE INDEX IF NOT EXISTS idx_device_activations_user ON device_activations(user_id);
 
 -- ADMIN WHITELIST TABLE (Hardware-locked admin access)
 CREATE TABLE IF NOT EXISTS admin_whitelist (
@@ -432,4 +432,4 @@ CREATE TABLE IF NOT EXISTS admin_whitelist (
   notes TEXT
 );
 
-CREATE INDEX idx_admin_whitelist_device ON admin_whitelist(device_id, revoked);
+CREATE INDEX IF NOT EXISTS idx_admin_whitelist_device ON admin_whitelist(device_id, revoked);
