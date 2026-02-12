@@ -66,30 +66,29 @@ router.post('/login', async (req, res) => {
             [license.license_key]
         );
 
-        if (deviceRows.length === 0) {
-            // First login - activate device
-            await pool.query(
-                `INSERT INTO device_activations (license_key, user_id, device_id, device_name, os_info)
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [license.license_key, user.id, deviceId, deviceName, osInfo]
-            );
-            console.log(`✅ Device activated for ${email}: ${deviceName}`);
-        } else {
-            // Check if device matches
-            const activation = deviceRows[0];
-            if (activation.device_id !== deviceId) {
-                return res.status(403).json({
-                    error: 'This account is bound to a different device',
-                    boundDevice: activation.device_name,
-                    message: 'Please contact admin to reset device binding'
-                });
-            }
+        const existingDevice = deviceRows.find(d => d.device_id === deviceId);
 
-            // Update last_seen
+        if (existingDevice) {
+            // Device already activated - update last_seen
             await pool.query(
                 'UPDATE device_activations SET last_seen = NOW() WHERE device_id = $1',
                 [deviceId]
             );
+        } else if (deviceRows.length < license.max_devices) {
+            // New device but still within limit - activate
+            await pool.query(
+                `INSERT INTO device_activations (license_key, user_id, device_id, device_name, os_info)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (device_id) DO UPDATE SET last_seen = NOW()`,
+                [license.license_key, user.id, deviceId, deviceName, osInfo]
+            );
+            console.log(`✅ Device activated for ${email}: ${deviceName} (${deviceRows.length + 1}/${license.max_devices})`);
+        } else {
+            // Max devices reached
+            return res.status(403).json({
+                error: 'Maximum devices reached',
+                message: `This license allows ${license.max_devices} device(s). Contact admin to reset.`
+            });
         }
 
         // If user is ADMIN, check whitelist
