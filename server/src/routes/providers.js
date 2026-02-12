@@ -170,7 +170,7 @@ router.post('/', async (req, res) => {
 
         await pool.query(`
             INSERT INTO forwarders (id, company_name, contact_name, email, phone, address, on_time_rate, doc_accuracy_rate, cost_score, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ACTIVE', datetime('now'))
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ACTIVE', NOW())
         `, [id, name, contact, email, phone, address, onTimeRate, docAccuracyRate, costScore]);
 
         res.status(201).json({
@@ -315,7 +315,7 @@ router.get('/:id/debt', async (req, res) => {
                 phone,
                 COALESCE(status, 'ACTIVE') as status
             FROM forwarders
-            WHERE id = ?
+            WHERE id = $1
         `, [id]);
 
         if (providerRows.length === 0) {
@@ -338,7 +338,7 @@ router.get('/:id/debt', async (req, res) => {
                 b.eta,
                 b.created_at
             FROM bookings b
-            WHERE b.forwarder_id = ?
+            WHERE b.forwarder_id = $1
             ORDER BY b.created_at DESC
         `, [id]);
 

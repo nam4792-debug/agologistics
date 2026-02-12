@@ -17,7 +17,7 @@ async function checkDeadlines(io) {
       FROM booking_deadlines bd
       JOIN bookings b ON bd.booking_id = b.id
       WHERE bd.status = 'PENDING' 
-        AND bd.sales_confirmed = 0
+        AND bd.sales_confirmed = false
     `);
 
         if (bookings.length === 0) {
@@ -85,9 +85,9 @@ async function checkDeadlines(io) {
                 const columnName = `alert_sent_${alertType.replace('h', 'h')}`;
                 await pool.query(
                     `UPDATE booking_deadlines 
-           SET ${columnName} = 1,
-               updated_at = datetime('now')
-           WHERE id = ?`,
+           SET ${columnName} = true,
+               updated_at = NOW()
+           WHERE id = $1`,
                     [booking.id]
                 );
 

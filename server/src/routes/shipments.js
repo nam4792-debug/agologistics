@@ -56,7 +56,7 @@ router.get('/:id', async (req, res) => {
        FROM shipments s
        LEFT JOIN customers c ON s.customer_id = c.id
        LEFT JOIN forwarders f ON s.forwarder_id = f.id
-       WHERE s.id = ?`,
+       WHERE s.id = $1`,
             [req.params.id]
         );
 
@@ -66,7 +66,7 @@ router.get('/:id', async (req, res) => {
 
         // Get documents
         const { rows: documents } = await pool.query(
-            `SELECT * FROM documents WHERE shipment_id = ? ORDER BY created_at DESC`,
+            `SELECT * FROM documents WHERE shipment_id = $1 ORDER BY created_at DESC`,
             [req.params.id]
         );
 
@@ -75,7 +75,7 @@ router.get('/:id', async (req, res) => {
             `SELECT b.*, bd.cut_off_si, bd.cut_off_vgm, bd.cut_off_cy, bd.sales_confirmed
        FROM bookings b
        LEFT JOIN booking_deadlines bd ON b.id = bd.booking_id
-       WHERE b.shipment_id = ?`,
+       WHERE b.shipment_id = $1`,
             [req.params.id]
         );
 
@@ -83,7 +83,7 @@ router.get('/:id', async (req, res) => {
         let invoices = [];
         try {
             const invoiceResult = await pool.query(
-                'SELECT * FROM invoices WHERE shipment_id = ? ORDER BY created_at DESC',
+                'SELECT * FROM invoices WHERE shipment_id = $1 ORDER BY created_at DESC',
                 [req.params.id]
             );
             invoices = invoiceResult.rows;
@@ -133,7 +133,7 @@ router.post('/', async (req, res) => {
             });
         }
 
-        // Generate UUID for SQLite
+        // Generate UUID
         const id = `ship-${Date.now().toString(36)}`;
 
         const { rows } = await pool.query(
@@ -142,7 +142,8 @@ router.post('/', async (req, res) => {
         origin_port, destination_port, origin_country, destination_country,
         cargo_description, cargo_weight_kg, cargo_volume_cbm,
         container_count, container_type, incoterm, etd, eta, notes)
-       VALUES (?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, 'DRAFT', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+       RETURNING *`,
             [
                 id,
                 shipmentNumber,
@@ -165,13 +166,7 @@ router.post('/', async (req, res) => {
             ]
         );
 
-        // Get the created shipment
-        const { rows: newShipment } = await pool.query(
-            'SELECT * FROM shipments WHERE id = ?',
-            [id]
-        );
-
-        const createdShipment = newShipment[0] || { id, shipment_number: shipmentNumber };
+        const createdShipment = rows[0] || { id, shipment_number: shipmentNumber };
 
         // Emit real-time event
         const io = req.app.get('io');
@@ -190,6 +185,7 @@ router.put('/:id', async (req, res) => {
         const updates = req.body;
         const fields = [];
         const values = [];
+        let paramIndex = 1;
 
         const allowedFields = [
             'status',
@@ -208,7 +204,7 @@ router.put('/:id', async (req, res) => {
         for (const [key, value] of Object.entries(updates)) {
             const snakeKey = key.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
             if (allowedFields.includes(snakeKey)) {
-                fields.push(`${snakeKey} = ?`);
+                fields.push(`${snakeKey} = $${paramIndex++}`);
                 values.push(value);
             }
         }
@@ -217,16 +213,16 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ error: 'No valid fields to update' });
         }
 
-        fields.push(`updated_at = datetime('now')`);
+        fields.push(`updated_at = NOW()`);
         values.push(req.params.id);
 
         await pool.query(
-            `UPDATE shipments SET ${fields.join(', ')} WHERE id = ?`,
+            `UPDATE shipments SET ${fields.join(', ')} WHERE id = $${paramIndex}`,
             values
         );
 
         // Fetch the updated shipment
-        const { rows } = await pool.query('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
+        const { rows } = await pool.query('SELECT * FROM shipments WHERE id = $1', [req.params.id]);
 
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Shipment not found' });
@@ -249,12 +245,12 @@ router.patch('/:id/status', async (req, res) => {
         const { status } = req.body;
 
         await pool.query(
-            `UPDATE shipments SET status = ?, updated_at = datetime('now') WHERE id = ?`,
+            `UPDATE shipments SET status = $1, updated_at = NOW() WHERE id = $2`,
             [status, req.params.id]
         );
 
         // Fetch the updated shipment
-        const { rows } = await pool.query('SELECT * FROM shipments WHERE id = ?', [req.params.id]);
+        const { rows } = await pool.query('SELECT * FROM shipments WHERE id = $1', [req.params.id]);
 
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Shipment not found' });
@@ -278,7 +274,7 @@ router.delete('/:id', async (req, res) => {
 
         // Check if shipment exists
         const { rows: existing } = await pool.query(
-            'SELECT * FROM shipments WHERE id = ?',
+            'SELECT * FROM shipments WHERE id = $1',
             [shipmentId]
         );
 
@@ -288,25 +284,25 @@ router.delete('/:id', async (req, res) => {
 
         // Clear shipment_id from related bookings (don't delete bookings)
         await pool.query(
-            'UPDATE bookings SET shipment_id = NULL WHERE shipment_id = ?',
+            'UPDATE bookings SET shipment_id = NULL WHERE shipment_id = $1',
             [shipmentId]
         );
 
         // Delete related documents
         await pool.query(
-            'DELETE FROM documents WHERE shipment_id = ?',
+            'DELETE FROM documents WHERE shipment_id = $1',
             [shipmentId]
         );
 
         // Delete related tasks
         await pool.query(
-            'DELETE FROM tasks WHERE shipment_id = ?',
+            'DELETE FROM tasks WHERE shipment_id = $1',
             [shipmentId]
         );
 
         // Delete the shipment
         await pool.query(
-            'DELETE FROM shipments WHERE id = ?',
+            'DELETE FROM shipments WHERE id = $1',
             [shipmentId]
         );
 

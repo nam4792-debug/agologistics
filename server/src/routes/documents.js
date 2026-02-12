@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
         const params = [];
 
         if (shipmentId) {
-            query = 'SELECT * FROM documents WHERE shipment_id = ? ORDER BY created_at DESC';
+            query = 'SELECT * FROM documents WHERE shipment_id = $1 ORDER BY created_at DESC';
             params.push(shipmentId);
         }
 

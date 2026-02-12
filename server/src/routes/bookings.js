@@ -134,13 +134,13 @@ router.post('/', async (req, res) => {
         // Generate UUID
         const id = `book-${Date.now().toString(36)}`;
 
-        // Insert booking (SQLite syntax)
+        // Insert booking
         await pool.query(
             `INSERT INTO bookings 
        (id, booking_number, shipment_id, forwarder_id, type, status, vessel_flight, voyage_number,
         route, origin_port, destination_port, container_type, container_count,
         etd, eta, freight_rate_usd, notes)
-       VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
                 id,
                 bookingNumber,
@@ -161,20 +161,20 @@ router.post('/', async (req, res) => {
             ]
         );
 
-        // Insert deadlines if any deadline is provided (use empty string for NOT NULL)
+        // Insert deadlines if any deadline is provided
         if (cutOffSI || cutOffVGM || cutOffCY) {
             const dlId = `dl-${Date.now().toString(36)}`;
             await pool.query(
                 `INSERT INTO booking_deadlines 
          (id, booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5)`,
                 [dlId, id, cutOffSI || '', cutOffVGM || '', cutOffCY || '']
             );
         }
 
         // Get the created booking
         const { rows } = await pool.query(
-            'SELECT * FROM bookings WHERE id = ?',
+            'SELECT * FROM bookings WHERE id = $1',
             [id]
         );
 
@@ -279,14 +279,14 @@ router.delete('/:id', async (req, res) => {
         const bookingId = req.params.id;
 
         // First, delete related records
-        await pool.query('DELETE FROM booking_deadlines WHERE booking_id = ?', [bookingId]);
-        await pool.query('DELETE FROM tasks WHERE booking_id = ?', [bookingId]);
-        await pool.query('DELETE FROM truck_dispatches WHERE booking_id = ?', [bookingId]);
+        await pool.query('DELETE FROM booking_deadlines WHERE booking_id = $1', [bookingId]);
+        await pool.query('DELETE FROM tasks WHERE booking_id = $1', [bookingId]);
+        await pool.query('DELETE FROM truck_dispatches WHERE booking_id = $1', [bookingId]);
 
         // Then delete the booking
-        const result = await pool.query('DELETE FROM bookings WHERE id = ?', [bookingId]);
+        const result = await pool.query('DELETE FROM bookings WHERE id = $1', [bookingId]);
 
-        if (result.changes === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Booking not found' });
         }
 
