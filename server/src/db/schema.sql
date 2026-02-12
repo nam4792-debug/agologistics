@@ -158,9 +158,9 @@ CREATE TABLE IF NOT EXISTS booking_deadlines (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   booking_id UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
   
-  cut_off_si TIMESTAMP NOT NULL,
-  cut_off_vgm TIMESTAMP NOT NULL,
-  cut_off_cy TIMESTAMP NOT NULL,
+  cut_off_si TIMESTAMP,
+  cut_off_vgm TIMESTAMP,
+  cut_off_cy TIMESTAMP,
   
   sales_confirmed BOOLEAN DEFAULT false,
   sales_confirmed_at TIMESTAMP,
