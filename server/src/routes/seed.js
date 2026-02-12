@@ -57,4 +57,19 @@ router.post('/init', async (req, res) => {
     }
 });
 
+// POST /api/seed/reset - Clear device bindings for admin
+router.post('/reset', async (req, res) => {
+    try {
+        // Clear all device activations
+        await pool.query('DELETE FROM device_activations');
+        // Clear admin whitelist
+        await pool.query('DELETE FROM admin_whitelist');
+
+        res.json({ success: true, message: 'All device bindings and whitelist cleared' });
+    } catch (error) {
+        console.error('Reset error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
