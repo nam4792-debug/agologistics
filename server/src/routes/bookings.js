@@ -169,7 +169,7 @@ router.post('/', async (req, res) => {
                 `INSERT INTO booking_deadlines 
          (id, booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
          VALUES ($1, $2, $3, $4, $5)`,
-                [dlId, id, cutOffSI || '', cutOffVGM || '', cutOffCY || '']
+                [dlId, id, cutOffSI || null, cutOffVGM || null, cutOffCY || null]
             );
         }
 
