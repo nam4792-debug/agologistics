@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const { v4: uuidv4 } = require('uuid');
 const workflowService = require('../services/workflowService');
 const { authenticateToken } = require('./auth');
 
@@ -132,7 +133,7 @@ router.post('/', async (req, res) => {
         const cutOffCY = body.cut_off_cy || body.cutOffCY || null;
 
         // Generate UUID
-        const id = `book-${Date.now().toString(36)}`;
+        const id = uuidv4();
 
         // Insert booking
         await pool.query(
@@ -163,7 +164,7 @@ router.post('/', async (req, res) => {
 
         // Insert deadlines if any deadline is provided
         if (cutOffSI || cutOffVGM || cutOffCY) {
-            const dlId = `dl-${Date.now().toString(36)}`;
+            const dlId = uuidv4();
             await pool.query(
                 `INSERT INTO booking_deadlines 
          (id, booking_id, cut_off_si, cut_off_vgm, cut_off_cy)

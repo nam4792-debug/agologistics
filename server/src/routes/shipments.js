@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const { v4: uuidv4 } = require('uuid');
 
 // Get all shipments
 router.get('/', async (req, res) => {
@@ -134,7 +135,7 @@ router.post('/', async (req, res) => {
         }
 
         // Generate UUID
-        const id = `ship-${Date.now().toString(36)}`;
+        const id = uuidv4();
 
         const { rows } = await pool.query(
             `INSERT INTO shipments 
