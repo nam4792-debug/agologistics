@@ -41,6 +41,21 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 
 -- ============================================
+-- QC STAFF TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS qc_staff (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  staff_code VARCHAR(50) UNIQUE NOT NULL,
+  full_name VARCHAR(200) NOT NULL,
+  role VARCHAR(100) DEFAULT 'QC Inspector',
+  email VARCHAR(255),
+  phone VARCHAR(20),
+  department VARCHAR(100),
+  status VARCHAR(20) DEFAULT 'ACTIVE',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================
 -- FORWARDERS TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS forwarders (

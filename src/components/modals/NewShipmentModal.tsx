@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, Ship, Plane, Loader2, Package, UserCheck } from 'lucide-react';
+import { X, Ship, Plane, Loader2, Package, UserCheck, UserPlus, Plus } from 'lucide-react';
 import { Button, Input, Select } from '@/components/ui';
+import { NewCustomerModal } from './NewCustomerModal';
+import { NewQCStaffModal } from './NewQCStaffModal';
+import { API_URL } from '@/lib/api';
 
 interface NewShipmentModalProps {
     isOpen: boolean;
@@ -29,14 +32,7 @@ const incoterms = [
     { value: 'DDP', label: 'DDP - Delivered Duty Paid' },
 ];
 
-// Mock QC persons - would come from API
-const qcPersons = [
-    { value: '', label: 'Select QC Person' },
-    { value: 'qc-001', label: 'Nguyen Van A - QC Manager' },
-    { value: 'qc-002', label: 'Tran Thi B - QC Supervisor' },
-    { value: 'qc-003', label: 'Le Van C - QC Inspector' },
-    { value: 'qc-004', label: 'Pham Thi D - QC Inspector' },
-];
+
 
 interface AvailableBooking {
     id: string;
@@ -52,8 +48,11 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
     const [error, setError] = useState<string | null>(null);
     const [customers, setCustomers] = useState<Array<{ value: string; label: string }>>([]);
     const [forwarders, setForwarders] = useState<Array<{ value: string; label: string }>>([]);
+    const [qcPersons, setQcPersons] = useState<Array<{ value: string; label: string }>>([]);
     const [availableBookings, setAvailableBookings] = useState<AvailableBooking[]>([]);
     const [loadingBookings, setLoadingBookings] = useState(false);
+    const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
+    const [showNewQCModal, setShowNewQCModal] = useState(false);
 
     const [formData, setFormData] = useState({
         type: 'FCL',
@@ -78,6 +77,7 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
         if (isOpen) {
             loadCustomers();
             loadForwarders();
+            loadQCStaff();
             loadAvailableBookings();
         }
     }, [isOpen]);
@@ -102,13 +102,16 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
 
     const loadCustomers = async () => {
         try {
-            setCustomers([
-                { value: 'cust-001', label: 'Chennai Fresh Foods' },
-                { value: 'cust-002', label: 'Tokyo Fruits Import' },
-                { value: 'cust-003', label: 'Dubai Premium Goods' },
-                { value: 'cust-004', label: 'Shanghai Agricultural Co.' },
-                { value: 'cust-005', label: 'Singapore Fresh Market' },
-            ]);
+            const res = await fetch(`${API_URL}/api/customers`);
+            const data = await res.json();
+            if (data.success && data.customers) {
+                setCustomers(
+                    data.customers.map((c: { id: string; name: string; code: string }) => ({
+                        value: c.id,
+                        label: `${c.name} (${c.code})`,
+                    }))
+                );
+            }
         } catch (e) {
             console.error('Failed to load customers:', e);
         }
@@ -116,13 +119,35 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
 
     const loadForwarders = async () => {
         try {
-            setForwarders([
-                { value: 'fwd-001', label: 'ABC Logistics' },
-                { value: 'fwd-002', label: 'Global Shipping Co' },
-                { value: 'fwd-003', label: 'FastCargo VN' },
-            ]);
+            const res = await fetch(`${API_URL}/api/providers`);
+            const data = await res.json();
+            if (data.success && data.providers) {
+                setForwarders(
+                    data.providers.map((f: { id: string; company_name: string }) => ({
+                        value: f.id,
+                        label: f.company_name,
+                    }))
+                );
+            }
         } catch (e) {
             console.error('Failed to load forwarders:', e);
+        }
+    };
+
+    const loadQCStaff = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/qc-staff`);
+            const data = await res.json();
+            if (data.success && data.staff) {
+                setQcPersons(
+                    data.staff.map((s: { id: string; name: string; role: string }) => ({
+                        value: s.id,
+                        label: `${s.name} - ${s.role}`,
+                    }))
+                );
+            }
+        } catch (e) {
+            console.error('Failed to load QC staff:', e);
         }
     };
 
@@ -130,7 +155,7 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
         setLoadingBookings(true);
         try {
             // Fetch bookings that are not yet linked to any shipment
-            const res = await fetch('http://localhost:3001/api/bookings?status=CONFIRMED&unlinked=true');
+            const res = await fetch(`${API_URL}/api/bookings?status=CONFIRMED&unlinked=true`);
             const data = await res.json();
             setAvailableBookings(data.bookings || []);
         } catch (e) {
@@ -185,7 +210,7 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
                 eta: formData.eta || null,
             };
 
-            const result = await fetch('http://localhost:3001/api/shipments', {
+            const result = await fetch(`${API_URL}/api/shipments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -312,11 +337,24 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
                                 <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-2">
                                     Customer *
                                 </label>
-                                <Select
-                                    options={[{ value: '', label: 'Select Customer' }, ...customers]}
-                                    value={formData.customerId}
-                                    onChange={(e) => handleChange('customerId', e.target.value)}
-                                />
+                                <div className="flex gap-2">
+                                    <div className="flex-1">
+                                        <Select
+                                            options={[{ value: '', label: customers.length === 0 ? 'No customers yet' : 'Select Customer' }, ...customers]}
+                                            value={formData.customerId}
+                                            onChange={(e) => handleChange('customerId', e.target.value)}
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewCustomerModal(true)}
+                                        className="flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 border border-green-500/30 transition-colors whitespace-nowrap"
+                                        title="Add New Customer"
+                                    >
+                                        <UserPlus className="w-4 h-4" />
+                                        Add
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -327,12 +365,12 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
                                     Forwarder
                                 </label>
                                 <Select
-                                    options={[{ value: '', label: 'Select Forwarder' }, ...forwarders]}
+                                    options={[{ value: '', label: forwarders.length === 0 ? 'No forwarders yet' : 'Select Forwarder' }, ...forwarders]}
                                     value={formData.forwarderId}
                                     onChange={(e) => handleChange('forwarderId', e.target.value)}
                                 />
                             </div>
-                            {/* NEW: QC Person Field */}
+                            {/* QC Person Field with Add button */}
                             <div>
                                 <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-2">
                                     <span className="flex items-center gap-1">
@@ -340,11 +378,24 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
                                         QC Person Responsible
                                     </span>
                                 </label>
-                                <Select
-                                    options={qcPersons}
-                                    value={formData.qcPersonId}
-                                    onChange={(e) => handleChange('qcPersonId', e.target.value)}
-                                />
+                                <div className="flex gap-2">
+                                    <div className="flex-1">
+                                        <Select
+                                            options={[{ value: '', label: qcPersons.length === 0 ? 'No QC staff yet' : 'Select QC Person' }, ...qcPersons]}
+                                            value={formData.qcPersonId}
+                                            onChange={(e) => handleChange('qcPersonId', e.target.value)}
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewQCModal(true)}
+                                        className="flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 transition-colors whitespace-nowrap"
+                                        title="Add QC Staff"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                        Add
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -506,6 +557,24 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
                     </Button>
                 </div>
             </div>
+
+            {/* New Customer Modal */}
+            <NewCustomerModal
+                isOpen={showNewCustomerModal}
+                onClose={() => setShowNewCustomerModal(false)}
+                onSuccess={() => {
+                    loadCustomers(); // Refresh customer list
+                }}
+            />
+
+            {/* New QC Staff Modal */}
+            <NewQCStaffModal
+                isOpen={showNewQCModal}
+                onClose={() => setShowNewQCModal(false)}
+                onSuccess={() => {
+                    loadQCStaff(); // Refresh QC staff list
+                }}
+            />
         </div>
     );
 }

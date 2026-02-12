@@ -1,25 +1,32 @@
 import { useState } from 'react';
-import { X, Users, Loader2, User, Mail, Phone, Globe } from 'lucide-react';
-import { Button, Input } from '@/components/ui';
+import { X, UserCheck, Loader2, User, Mail, Phone, Briefcase } from 'lucide-react';
+import { Button, Input, Select } from '@/components/ui';
 import { API_URL } from '@/lib/api';
 import toast from 'react-hot-toast';
 
-interface NewCustomerModalProps {
+interface NewQCStaffModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess?: () => void;
 }
 
-export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModalProps) {
+const qcRoles = [
+    { value: 'QC Inspector', label: 'QC Inspector' },
+    { value: 'QC Supervisor', label: 'QC Supervisor' },
+    { value: 'QC Manager', label: 'QC Manager' },
+    { value: 'QC Lead', label: 'QC Lead' },
+];
+
+export function NewQCStaffModal({ isOpen, onClose, onSuccess }: NewQCStaffModalProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
-        company_name: '',
-        contact_name: '',
+        full_name: '',
+        role: 'QC Inspector',
         email: '',
         phone: '',
-        country: '',
+        department: '',
     });
 
     const handleChange = (field: string, value: string) => {
@@ -30,8 +37,8 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.company_name.trim()) {
-            setError('Company name is required');
+        if (!formData.full_name.trim()) {
+            setError('Full name is required');
             return;
         }
 
@@ -39,7 +46,7 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
         setError(null);
 
         try {
-            const response = await fetch(`${API_URL}/api/customers`, {
+            const response = await fetch(`${API_URL}/api/qc-staff`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
@@ -48,23 +55,23 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.error || 'Failed to create customer');
+                throw new Error(result.error || 'Failed to create QC staff');
             }
 
-            toast.success(`Customer "${formData.company_name}" created!`);
+            toast.success(`QC Staff "${formData.full_name}" added!`);
             onSuccess?.();
             onClose();
 
             // Reset form
             setFormData({
-                company_name: '',
-                contact_name: '',
+                full_name: '',
+                role: 'QC Inspector',
                 email: '',
                 phone: '',
-                country: '',
+                department: '',
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to create customer');
+            setError(err instanceof Error ? err.message : 'Failed to create QC staff');
         } finally {
             setLoading(false);
         }
@@ -82,15 +89,15 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
                 {/* Header */}
                 <div className="flex items-center justify-between p-5 border-b border-[hsl(var(--border))]">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                            <Users className="w-5 h-5 text-white" />
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                            <UserCheck className="w-5 h-5 text-white" />
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-[hsl(var(--foreground))]">
-                                New Customer
+                                New QC Staff
                             </h2>
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                Add a new customer
+                                Add a quality control person
                             </p>
                         </div>
                     </div>
@@ -112,28 +119,40 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
 
                     <div>
                         <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-1">
-                            <Users className="w-4 h-4 inline mr-2" />
-                            Company Name *
+                            <User className="w-4 h-4 inline mr-2" />
+                            Full Name *
                         </label>
                         <Input
-                            value={formData.company_name}
-                            onChange={(e) => handleChange('company_name', e.target.value)}
-                            placeholder="XYZ Trading Co., Ltd"
+                            value={formData.full_name}
+                            onChange={(e) => handleChange('full_name', e.target.value)}
+                            placeholder="Nguyen Van A"
                             className="w-full"
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-1">
-                            <User className="w-4 h-4 inline mr-2" />
-                            Contact Person
-                        </label>
-                        <Input
-                            value={formData.contact_name}
-                            onChange={(e) => handleChange('contact_name', e.target.value)}
-                            placeholder="Jane Smith"
-                            className="w-full"
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-1">
+                                <Briefcase className="w-4 h-4 inline mr-2" />
+                                QC Role
+                            </label>
+                            <Select
+                                options={qcRoles}
+                                value={formData.role}
+                                onChange={(e) => handleChange('role', e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-1">
+                                <Briefcase className="w-4 h-4 inline mr-2" />
+                                Department
+                            </label>
+                            <Input
+                                value={formData.department}
+                                onChange={(e) => handleChange('department', e.target.value)}
+                                placeholder="Quality Department"
+                            />
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -146,7 +165,7 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
                                 type="email"
                                 value={formData.email}
                                 onChange={(e) => handleChange('email', e.target.value)}
-                                placeholder="contact@customer.com"
+                                placeholder="qc@company.com"
                             />
                         </div>
                         <div>
@@ -161,19 +180,6 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
                             />
                         </div>
                     </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-1">
-                            <Globe className="w-4 h-4 inline mr-2" />
-                            Country
-                        </label>
-                        <Input
-                            value={formData.country}
-                            onChange={(e) => handleChange('country', e.target.value)}
-                            placeholder="Vietnam"
-                            className="w-full"
-                        />
-                    </div>
                 </form>
 
                 {/* Footer */}
@@ -185,12 +191,12 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
                         {loading ? (
                             <>
                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Creating...
+                                Adding...
                             </>
                         ) : (
                             <>
-                                <Users className="w-4 h-4 mr-2" />
-                                Create Customer
+                                <UserCheck className="w-4 h-4 mr-2" />
+                                Add QC Staff
                             </>
                         )}
                     </Button>

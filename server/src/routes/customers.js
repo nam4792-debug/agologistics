@@ -40,7 +40,7 @@ router.get('/:id', async (req, res) => {
                 country,
                 created_at as "createdAt"
             FROM customers
-            WHERE id = ?
+            WHERE id = $1
         `, [req.params.id]);
 
         if (rows.length === 0) {
@@ -51,7 +51,7 @@ router.get('/:id', async (req, res) => {
         const { rows: shipments } = await pool.query(`
             SELECT id, shipment_number, type, status, origin_port, destination_port, etd, eta
             FROM shipments
-            WHERE customer_id = ?
+            WHERE customer_id = $1
             ORDER BY created_at DESC
             LIMIT 10
         `, [req.params.id]);
@@ -81,7 +81,7 @@ router.post('/', async (req, res) => {
 
         await pool.query(`
             INSERT INTO customers (id, customer_code, company_name, contact_name, email, phone, country)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
         `, [id, code, company_name, contact_name || null, email || null, phone || null, country || null]);
 
         res.status(201).json({
@@ -102,23 +102,24 @@ router.put('/:id', async (req, res) => {
 
         const updates = [];
         const values = [];
+        let paramIndex = 1;
 
-        if (company_name) { updates.push('company_name = ?'); values.push(company_name); }
-        if (contact_name !== undefined) { updates.push('contact_name = ?'); values.push(contact_name); }
-        if (email !== undefined) { updates.push('email = ?'); values.push(email); }
-        if (phone !== undefined) { updates.push('phone = ?'); values.push(phone); }
-        if (country !== undefined) { updates.push('country = ?'); values.push(country); }
+        if (company_name) { updates.push(`company_name = $${paramIndex++}`); values.push(company_name); }
+        if (contact_name !== undefined) { updates.push(`contact_name = $${paramIndex++}`); values.push(contact_name); }
+        if (email !== undefined) { updates.push(`email = $${paramIndex++}`); values.push(email); }
+        if (phone !== undefined) { updates.push(`phone = $${paramIndex++}`); values.push(phone); }
+        if (country !== undefined) { updates.push(`country = $${paramIndex++}`); values.push(country); }
 
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No fields to update' });
         }
 
         values.push(id);
-        const query = `UPDATE customers SET ${updates.join(', ')} WHERE id = ?`;
+        const query = `UPDATE customers SET ${updates.join(', ')} WHERE id = $${paramIndex}`;
 
         const result = await pool.query(query, values);
 
-        if (result.changes === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Customer not found' });
         }
 
@@ -132,9 +133,9 @@ router.put('/:id', async (req, res) => {
 // Delete customer
 router.delete('/:id', async (req, res) => {
     try {
-        const result = await pool.query('DELETE FROM customers WHERE id = ?', [req.params.id]);
+        const result = await pool.query('DELETE FROM customers WHERE id = $1', [req.params.id]);
 
-        if (result.changes === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Customer not found' });
         }
 

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { MainLayout } from '@/components/layout';
 import { ProtectedRoute } from '@/components/auth';
@@ -20,7 +20,7 @@ import { NotificationListener } from '@/components/notifications';
 function App() {
   return (
     <SocketProvider>
-      <BrowserRouter>
+      <HashRouter>
         {/* Toast notifications */}
         <Toaster
           position="top-right"
@@ -60,7 +60,7 @@ function App() {
             </Route>
           </Route>
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </SocketProvider>
   );
 }

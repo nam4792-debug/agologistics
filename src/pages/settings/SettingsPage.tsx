@@ -12,18 +12,14 @@ import {
     Save,
     ChevronRight,
     Brain,
-    Users,
-    Plus,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Select } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { AISettingsPanel } from '@/components/settings';
 import { IntegrationsPanel } from '@/components/settings/IntegrationsPanel';
-import { NewCustomerModal } from '@/components/modals';
 
 const settingsSections = [
     { id: 'profile', label: 'Profile', icon: User },
-    { id: 'customers', label: 'Customers', icon: Users },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'ai', label: 'AI Configuration', icon: Brain },
     { id: 'security', label: 'Security', icon: Shield },
@@ -35,24 +31,6 @@ const settingsSections = [
 
 export function SettingsPage() {
     const [activeSection, setActiveSection] = useState('profile');
-    const [showCustomerModal, setShowCustomerModal] = useState(false);
-    const [customers, setCustomers] = useState<Array<{ id: string; code: string; name: string; contact: string; email: string; phone: string; country: string }>>([]);
-    const [loadingCustomers, setLoadingCustomers] = useState(false);
-
-    const fetchCustomers = async () => {
-        setLoadingCustomers(true);
-        try {
-            const res = await fetch('http://localhost:3001/api/customers');
-            const data = await res.json();
-            if (data.success) {
-                setCustomers(data.customers || []);
-            }
-        } catch (error) {
-            console.error('Error fetching customers:', error);
-        } finally {
-            setLoadingCustomers(false);
-        }
-    };
 
     // Handle URL params for tab selection (e.g., from OAuth callback)
     useEffect(() => {
@@ -62,13 +40,6 @@ export function SettingsPage() {
             setActiveSection(tab);
         }
     }, []);
-
-    // Load customers when customers tab is selected
-    useEffect(() => {
-        if (activeSection === 'customers') {
-            fetchCustomers();
-        }
-    }, [activeSection]);
 
     return (
         <div className="space-y-6">
@@ -168,65 +139,6 @@ export function SettingsPage() {
                         </Card>
                     )}
 
-                    {activeSection === 'customers' && (
-                        <>
-                            <NewCustomerModal
-                                isOpen={showCustomerModal}
-                                onClose={() => setShowCustomerModal(false)}
-                                onSuccess={fetchCustomers}
-                            />
-                            <Card>
-                                <CardHeader className="flex flex-row items-center justify-between">
-                                    <CardTitle>Customer Management</CardTitle>
-                                    <Button onClick={() => { fetchCustomers(); setShowCustomerModal(true); }}>
-                                        <Plus className="w-4 h-4 mr-2" />
-                                        New Customer
-                                    </Button>
-                                </CardHeader>
-                                <CardContent>
-                                    {loadingCustomers ? (
-                                        <div className="text-center py-8 text-[hsl(var(--muted-foreground))]">
-                                            Loading customers...
-                                        </div>
-                                    ) : customers.length === 0 ? (
-                                        <div className="text-center py-8">
-                                            <Users className="w-12 h-12 mx-auto text-[hsl(var(--muted-foreground))] mb-4" />
-                                            <p className="text-[hsl(var(--muted-foreground))]">No customers yet</p>
-                                            <Button className="mt-4" onClick={() => setShowCustomerModal(true)}>
-                                                <Plus className="w-4 h-4 mr-2" />
-                                                Add First Customer
-                                            </Button>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {customers.map((customer) => (
-                                                <div
-                                                    key={customer.id}
-                                                    className="flex items-center justify-between p-4 rounded-lg bg-[hsl(var(--secondary))] hover:bg-[hsl(var(--secondary))]/80 transition-colors"
-                                                >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-bold">
-                                                            {customer.name?.charAt(0) || 'C'}
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-medium text-[hsl(var(--foreground))]">{customer.name}</p>
-                                                            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                                                {customer.code} • {customer.country || 'No country'}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-sm text-[hsl(var(--foreground))]">{customer.contact || '-'}</p>
-                                                        <p className="text-sm text-[hsl(var(--muted-foreground))]">{customer.email || '-'}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </>
-                    )}
 
                     {activeSection === 'notifications' && (
                         <Card>

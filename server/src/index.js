@@ -22,6 +22,7 @@ const syncRoutes = require('./routes/sync');
 const providersRoutes = require('./routes/providers');
 const searchRoutes = require('./routes/search');
 const customersRoutes = require('./routes/customers');
+const qcStaffRoutes = require('./routes/qcstaff');
 
 // Import jobs
 const { checkDeadlines } = require('./jobs/deadlineMonitor');
@@ -74,6 +75,7 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/providers', providersRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/customers', customersRoutes);
+app.use('/api/qc-staff', qcStaffRoutes);
 
 // Test endpoint to trigger deadline check manually
 app.post('/api/test/trigger-deadline-check', async (req, res) => {
