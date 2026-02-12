@@ -37,8 +37,8 @@ router.post('/init', async (req, res) => {
 
         // Create license
         await pool.query(
-            `INSERT INTO licenses (license_key, user_id, type, max_devices, status)
-       VALUES ('ADMIN-MASTER-KEY-001', $1, 'PREMIUM', 99, 'ACTIVE')`,
+            `INSERT INTO licenses (license_key, user_id, type, max_devices, revoked)
+       VALUES ('ADMIN-MASTER-KEY-001', $1, 'PREMIUM', 99, false)`,
             [adminId]
         );
 
