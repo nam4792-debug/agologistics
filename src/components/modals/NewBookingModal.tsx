@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Anchor, Plane, Loader2, Ship } from 'lucide-react';
 import { Button, Input, Select } from '@/components/ui';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface NewBookingModalProps {
     isOpen: boolean;
@@ -56,7 +57,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
 
     const loadForwarders = async () => {
         try {
-            const response = await fetch('http://localhost:3001/api/bookings/forwarders');
+            const response = await fetch(`${API_URL}/api/bookings/forwarders`);
             const data = await response.json();
             if (data.forwarders) {
                 setForwarders(data.forwarders.map((f: { id: string; company_name: string }) => ({
@@ -113,7 +114,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                 cut_off_cy: formData.cutOffCY,
             };
 
-            const response = await fetch('http://localhost:3001/api/bookings', {
+            const response = await fetch(`${API_URL}/api/bookings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),

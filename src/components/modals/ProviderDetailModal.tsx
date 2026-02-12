@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, Button, Badge } from '@/components/ui';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
+import { API_URL } from '@/lib/api';
 
 interface ProviderDetailModalProps {
     isOpen: boolean;
@@ -68,7 +69,7 @@ export function ProviderDetailModal({ isOpen, onClose, providerId }: ProviderDet
 
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:3001/api/providers/${providerId}/debt`);
+            const res = await fetch(`${API_URL}/api/providers/${providerId}/debt`);
             const data = await res.json();
 
             if (data.success) {

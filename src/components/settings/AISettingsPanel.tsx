@@ -14,6 +14,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, Button, Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface AISettings {
     provider: 'openai' | 'anthropic' | 'custom';
@@ -95,7 +96,7 @@ export function AISettingsPanel() {
         setTestResult(null);
 
         try {
-            const response = await fetch('http://localhost:3001/api/ai/test', {
+            const response = await fetch(`${API_URL}/api/ai/test`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings),
@@ -125,7 +126,7 @@ export function AISettingsPanel() {
             localStorage.setItem('ai_settings', JSON.stringify(settings));
 
             // Also save to backend
-            await fetch('http://localhost:3001/api/settings/ai', {
+            await fetch(`${API_URL}/api/settings/ai`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings),

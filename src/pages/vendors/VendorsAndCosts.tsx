@@ -12,6 +12,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Badge } from '@/components/ui';
 import { cn, formatCurrency } from '@/lib/utils';
 import { NewVendorModal, ProviderDetailModal } from '@/components/modals';
+import { API_URL } from '@/lib/api';
 
 interface VendorStats {
     totalDebt: number;
@@ -57,21 +58,21 @@ export function VendorsAndCosts() {
         setLoading(true);
         try {
             // Fetch stats
-            const statsRes = await fetch('http://localhost:3001/api/providers/stats');
+            const statsRes = await fetch(`${API_URL}/api/providers/stats`);
             const statsData = await statsRes.json();
             if (statsData.success) {
                 setStats(statsData.stats);
             }
 
             // Fetch vendors
-            const vendorsRes = await fetch('http://localhost:3001/api/providers');
+            const vendorsRes = await fetch(`${API_URL}/api/providers`);
             const vendorsData = await vendorsRes.json();
             if (vendorsData.success) {
                 setVendors(vendorsData.providers || []);
             }
 
             // Fetch freight costs from bookings
-            const bookingsRes = await fetch('http://localhost:3001/api/bookings');
+            const bookingsRes = await fetch(`${API_URL}/api/bookings`);
             const bookingsData = await bookingsRes.json();
             if (bookingsData.bookings) {
                 setFreightCosts(bookingsData.bookings.filter((b: FreightCost) => b.freight_rate_usd > 0));

@@ -16,7 +16,7 @@ interface License {
     created_at: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
 
 export function AdminLicensePanel() {
     const { token } = useAuthStore();

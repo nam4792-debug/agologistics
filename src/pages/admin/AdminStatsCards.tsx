@@ -26,7 +26,7 @@ interface Stats {
     }>;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
 
 export function AdminStatsCards() {
     const { token } = useAuthStore();

@@ -17,6 +17,7 @@ import {
 import { Button, Badge } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface DocumentAISidebarProps {
     isOpen: boolean;
@@ -82,7 +83,7 @@ export function DocumentAISidebar({ isOpen, onClose, document }: DocumentAISideb
         setResult(null);
 
         try {
-            const response = await fetch('http://localhost:3001/api/ai/analyze-document', {
+            const response = await fetch(`${API_URL}/api/ai/analyze-document`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ documentId: document.id }),
@@ -115,7 +116,7 @@ export function DocumentAISidebar({ isOpen, onClose, document }: DocumentAISideb
         setChatLoading(true);
 
         try {
-            const response = await fetch('http://localhost:3001/api/ai/chat', {
+            const response = await fetch(`${API_URL}/api/ai/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, Badge, I
 import { formatCurrency, formatDate, formatWeight, cn } from '@/lib/utils';
 import type { ShipmentStatus } from '@/types';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 const statusLabels: Record<string, string> = {
     DRAFT: 'Draft',
@@ -134,8 +135,8 @@ export function ShipmentDetail() {
         setLoading(true);
         try {
             const [shipmentRes, docsRes] = await Promise.all([
-                fetch(`http://localhost:3001/api/shipments/${id}`),
-                fetch(`http://localhost:3001/api/documents?shipmentId=${id}`),
+                fetch(`${API_URL}/api/shipments/${id}`),
+                fetch(`${API_URL}/api/documents?shipmentId=${id}`),
             ]);
 
             const shipmentData = await shipmentRes.json();
@@ -194,7 +195,7 @@ export function ShipmentDetail() {
         if (!id) return;
         setSaving(true);
         try {
-            const res = await fetch(`http://localhost:3001/api/shipments/${id}`, {
+            const res = await fetch(`${API_URL}/api/shipments/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(editData),
@@ -217,7 +218,7 @@ export function ShipmentDetail() {
     const handleStatusChange = async (newStatus: string) => {
         if (!id) return;
         try {
-            const res = await fetch(`http://localhost:3001/api/shipments/${id}/status`, {
+            const res = await fetch(`${API_URL}/api/shipments/${id}/status`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus }),
@@ -273,7 +274,7 @@ export function ShipmentDetail() {
                 formData.append('documentType', fileData.type);
                 formData.append('documentName', fileData.name);
 
-                await fetch('http://localhost:3001/api/documents/upload', {
+                await fetch(`${API_URL}/api/documents/upload`, {
                     method: 'POST',
                     body: formData,
                 });
@@ -562,7 +563,7 @@ export function ShipmentDetail() {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => window.open(`http://localhost:3001/api/documents/${doc.id}/download`, '_blank')}
+                                                    onClick={() => window.open(`${API_URL}/api/documents/${doc.id}/download`, '_blank')}
                                                 >
                                                     <Download className="w-4 h-4 mr-1" />
                                                     Download

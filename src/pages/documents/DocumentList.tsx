@@ -22,6 +22,7 @@ import { Card, CardContent, Button, Input, Badge } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
 import { DocumentAISidebar } from '@/components/documents';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 // Document types with icons
 const documentTypeInfo: Record<string, { label: string; icon: string; color: string }> = {
@@ -95,8 +96,8 @@ export function DocumentList() {
         setLoading(true);
         try {
             const [shipmentsRes, documentsRes] = await Promise.all([
-                fetch('http://localhost:3001/api/shipments'),
-                fetch('http://localhost:3001/api/documents'),
+                fetch(`${API_URL}/api/shipments`),
+                fetch(`${API_URL}/api/documents`),
             ]);
 
             const shipmentsData = await shipmentsRes.json();
@@ -435,7 +436,7 @@ export function DocumentList() {
                                                                 onClick={async () => {
                                                                     if (confirm(`Delete document ${doc.document_type}?`)) {
                                                                         try {
-                                                                            const response = await fetch(`http://localhost:3001/api/documents/${doc.id}`, {
+                                                                            const response = await fetch(`${API_URL}/api/documents/${doc.id}`, {
                                                                                 method: 'DELETE',
                                                                             });
                                                                             if (response.ok) {

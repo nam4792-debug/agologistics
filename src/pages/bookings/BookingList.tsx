@@ -19,6 +19,7 @@ import { Card, CardContent, Button, Input, Select, StatusBadge } from '@/compone
 import { formatCurrency, formatDate, calculateDaysRemaining, cn } from '@/lib/utils';
 import { NewBookingModal } from '@/components/modals';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface BookingListProps {
     type: 'FCL' | 'AIR';
@@ -69,7 +70,7 @@ export function BookingList({ type }: BookingListProps) {
     const fetchBookings = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`http://localhost:3001/api/bookings?type=${type}`);
+            const res = await fetch(`${API_URL}/api/bookings?type=${type}`);
             const data = await res.json();
             if (data.bookings) {
                 setBookings(data.bookings);
@@ -113,7 +114,7 @@ export function BookingList({ type }: BookingListProps) {
     const handleConfirmBooking = async (bookingId: string) => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/bookings/${bookingId}/confirm`, {
+            const response = await fetch(`${API_URL}/api/bookings/${bookingId}/confirm`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -142,7 +143,7 @@ export function BookingList({ type }: BookingListProps) {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/bookings/${booking.id}`, {
+            const response = await fetch(`${API_URL}/api/bookings/${booking.id}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
+import { API_URL } from '@/lib/api';
 
 interface BookingData {
     id: string;
@@ -63,7 +64,7 @@ export function RiskDashboard() {
         setLoading(true);
         try {
             // Fetch confirmed bookings to analyze risks
-            const res = await fetch('http://localhost:3001/api/bookings?status=CONFIRMED');
+            const res = await fetch(`${API_URL}/api/bookings?status=CONFIRMED`);
             const data = await res.json();
             setBookings(data.bookings || []);
         } catch (error) {

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface DispatchModalProps {
     isOpen: boolean;
@@ -95,7 +96,7 @@ export function DispatchModal({ isOpen, onClose, onSuccess, bookingId, bookingNu
                 notes: formData.notes,
             };
 
-            const response = await fetch('http://localhost:3001/api/dispatches', {
+            const response = await fetch(`${API_URL}/api/dispatches`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),

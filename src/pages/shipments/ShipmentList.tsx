@@ -16,6 +16,7 @@ import { formatDate, cn } from '@/lib/utils';
 import { NewShipmentModal } from '@/components/modals';
 import { useShipments } from '@/hooks';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface ShipmentData {
     id: string;
@@ -235,7 +236,7 @@ export function ShipmentList() {
                                                                 e.stopPropagation();
                                                                 if (confirm(`Delete shipment ${shipment.shipment_number}?`)) {
                                                                     try {
-                                                                        const response = await fetch(`http://localhost:3001/api/shipments/${shipment.id}`, {
+                                                                        const response = await fetch(`${API_URL}/api/shipments/${shipment.id}`, {
                                                                             method: 'DELETE'
                                                                         });
                                                                         if (response.ok) {

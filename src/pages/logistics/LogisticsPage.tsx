@@ -18,6 +18,7 @@ import { Card, CardContent, Button, Input, Badge } from '@/components/ui';
 import { cn, formatDate } from '@/lib/utils';
 import { DispatchModal } from '@/components/logistics';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface BookingData {
     id: string;
@@ -68,12 +69,12 @@ export function LogisticsPage() {
         setLoading(true);
         try {
             // Fetch confirmed bookings
-            const bookingsRes = await fetch('http://localhost:3001/api/bookings?status=CONFIRMED');
+            const bookingsRes = await fetch(`${API_URL}/api/bookings?status=CONFIRMED`);
             const bookingsData = await bookingsRes.json();
             setConfirmedBookings(bookingsData.bookings || []);
 
             // Fetch dispatches
-            const dispatchRes = await fetch('http://localhost:3001/api/truck-dispatches');
+            const dispatchRes = await fetch(`${API_URL}/api/truck-dispatches`);
             const dispatchData = await dispatchRes.json();
             setDispatches(dispatchData.dispatches || []);
         } catch (error) {

@@ -14,6 +14,7 @@ import {
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge } from '@/components/ui';
 import { cn, formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface SyncStatus {
     connected: boolean;
@@ -60,7 +61,7 @@ export function IntegrationsPanel() {
 
     const loadStatus = async () => {
         try {
-            const res = await fetch('http://localhost:3001/api/sync/status');
+            const res = await fetch(`${API_URL}/api/sync/status`);
             const data = await res.json();
             if (data.success) {
                 setStatus(data.status);
@@ -74,7 +75,7 @@ export function IntegrationsPanel() {
 
     const loadBackups = async () => {
         try {
-            const res = await fetch('http://localhost:3001/api/sync/backups');
+            const res = await fetch(`${API_URL}/api/sync/backups`);
             const data = await res.json();
             if (data.success) {
                 setBackups(data.backups || []);
@@ -87,7 +88,7 @@ export function IntegrationsPanel() {
     const handleConnect = async () => {
         setConnecting(true);
         try {
-            const res = await fetch('http://localhost:3001/api/sync/connect');
+            const res = await fetch(`${API_URL}/api/sync/connect`);
             const data = await res.json();
             if (data.authUrl) {
                 // Open Google OAuth in new window
@@ -106,7 +107,7 @@ export function IntegrationsPanel() {
         if (!confirm('Are you sure you want to disconnect Google Drive?')) return;
 
         try {
-            const res = await fetch('http://localhost:3001/api/sync/disconnect', { method: 'POST' });
+            const res = await fetch(`${API_URL}/api/sync/disconnect`, { method: 'POST' });
             const data = await res.json();
             if (data.success) {
                 toast.success('Disconnected from Google Drive');
@@ -120,7 +121,7 @@ export function IntegrationsPanel() {
     const handleBackup = async () => {
         setBackingUp(true);
         try {
-            const res = await fetch('http://localhost:3001/api/sync/backup', { method: 'POST' });
+            const res = await fetch(`${API_URL}/api/sync/backup`, { method: 'POST' });
             const data = await res.json();
             if (data.success) {
                 toast.success('Database backup completed!');
@@ -139,7 +140,7 @@ export function IntegrationsPanel() {
     const handleSyncDocuments = async () => {
         setSyncing(true);
         try {
-            const res = await fetch('http://localhost:3001/api/sync/documents', { method: 'POST' });
+            const res = await fetch(`${API_URL}/api/sync/documents`, { method: 'POST' });
             const data = await res.json();
             if (data.success) {
                 toast.success(data.message);
@@ -312,7 +313,7 @@ export function IntegrationsPanel() {
                             <li>Enable <strong>Google Drive API</strong></li>
                             <li>Go to <strong>APIs & Services → Credentials</strong></li>
                             <li>Create <strong>OAuth 2.0 Client ID</strong> (Desktop App type)</li>
-                            <li>Add redirect URI: <code className="bg-[hsl(var(--secondary))] px-2 py-0.5 rounded">http://localhost:3001/api/sync/callback</code></li>
+                            <li>Add redirect URI: <code className="bg-[hsl(var(--secondary))] px-2 py-0.5 rounded">${API_URL}/api/sync/callback</code></li>
                             <li>Download JSON and save as <code className="bg-[hsl(var(--secondary))] px-2 py-0.5 rounded">server/config/google-credentials.json</code></li>
                             <li>Restart the server and click "Connect Google Drive"</li>
                         </ol>

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Select } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
+import { API_URL } from '@/lib/api';
 
 interface BookingData {
     id: string;
@@ -54,8 +55,8 @@ export function AnalyticsPage() {
         setLoading(true);
         try {
             const [bookingsRes, shipmentsRes] = await Promise.all([
-                fetch('http://localhost:3001/api/bookings?status=CONFIRMED'),
-                fetch('http://localhost:3001/api/shipments'),
+                fetch(`${API_URL}/api/bookings?status=CONFIRMED`),
+                fetch(`${API_URL}/api/shipments`),
             ]);
 
             const bookingsData = await bookingsRes.json();

@@ -18,6 +18,7 @@ import { Card, CardContent, Button, Input, Select, Badge } from '@/components/ui
 import { cn, formatCurrency } from '@/lib/utils';
 import { ProviderDetailModal, NewVendorModal } from '@/components/modals';
 import type { ServiceProvider } from '@/types';
+import { API_URL } from '@/lib/api';
 
 // Extended provider with credit info
 interface ProviderWithCredit extends ServiceProvider {
@@ -42,7 +43,7 @@ export function ProviderList() {
     const fetchProviders = async () => {
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:3001/api/providers');
+            const res = await fetch(`${API_URL}/api/providers`);
             const data = await res.json();
             if (data.success && data.providers) {
                 setProviders(data.providers);
@@ -61,7 +62,7 @@ export function ProviderList() {
 
     const fetchRealDebtStats = async () => {
         try {
-            const res = await fetch('http://localhost:3001/api/providers/stats');
+            const res = await fetch(`${API_URL}/api/providers/stats`);
             const data = await res.json();
             if (data.success) {
                 setRealDebtStats(data.stats);

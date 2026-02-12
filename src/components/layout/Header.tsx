@@ -34,7 +34,7 @@ interface SearchResult {
 }
 
 // Get API URL from environment or default to localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
 
 export function Header({ sidebarCollapsed }: HeaderProps) {
     const navigate = useNavigate();

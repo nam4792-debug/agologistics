@@ -18,6 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge } from '@/components/ui';
 import { formatDate, formatCurrency, cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface BookingData {
     id: string;
@@ -81,7 +82,7 @@ export function BookingDetail() {
 
     const loadBookingDetails = async () => {
         try {
-            const response = await fetch(`http://localhost:3001/api/bookings/${id}`);
+            const response = await fetch(`${API_URL}/api/bookings/${id}`);
             const data = await response.json();
 
             if (data.booking) {
@@ -103,7 +104,7 @@ export function BookingDetail() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/bookings/${id}/confirm`, {
+            const response = await fetch(`${API_URL}/api/bookings/${id}/confirm`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

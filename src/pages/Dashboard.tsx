@@ -124,17 +124,19 @@ export function Dashboard() {
     const [recentShipments, setRecentShipments] = useState<RecentShipment[]>([]);
     const navigate = useNavigate();
 
+    const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
+
     // Fetch dashboard data from API
     const fetchDashboardData = async () => {
         setLoading(true);
         try {
             // Fetch metrics
-            const metricsRes = await fetch('http://localhost:3001/api/dashboard/metrics');
+            const metricsRes = await fetch(`${API_URL}/api/dashboard/metrics`);
             const metricsData = await metricsRes.json();
             setMetrics(metricsData.metrics);
 
             // Fetch recent shipments
-            const shipmentsRes = await fetch('http://localhost:3001/api/dashboard/recent-shipments');
+            const shipmentsRes = await fetch(`${API_URL}/api/dashboard/recent-shipments`);
             const shipmentsData = await shipmentsRes.json();
             setRecentShipments(shipmentsData.shipments || []);
         } catch (error) {
@@ -245,7 +247,6 @@ export function Dashboard() {
                     <MetricCard
                         title="Doc Accuracy"
                         value={`${docAccuracy}%`}
-                        trend={1.5}
                         icon={<CheckCircle className="w-6 h-6 text-white" />}
                         iconBg="bg-gradient-to-br from-green-500 to-emerald-500"
                         loading={loading}

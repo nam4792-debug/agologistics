@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Building, Loader2, User, Mail, Phone, MapPin } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import toast from 'react-hot-toast';
+import { API_URL } from '@/lib/api';
 
 interface NewVendorModalProps {
     isOpen: boolean;
@@ -38,7 +39,7 @@ export function NewVendorModal({ isOpen, onClose, onSuccess }: NewVendorModalPro
         setError(null);
 
         try {
-            const response = await fetch('http://localhost:3001/api/providers', {
+            const response = await fetch(`${API_URL}/api/providers`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),

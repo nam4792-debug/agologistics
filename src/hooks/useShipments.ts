@@ -3,7 +3,7 @@ import { useSocket } from '@/contexts';
 import toast from 'react-hot-toast';
 
 // Get API URL from environment or default to localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
 
 interface Shipment {
     id: string;
