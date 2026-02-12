@@ -94,25 +94,34 @@ router.post('/login', async (req, res) => {
 
         // If user is ADMIN, check whitelist
         if (user.role === 'ADMIN') {
-            const { rows: whitelistRows } = await pool.query(
-                'SELECT * FROM admin_whitelist WHERE device_id = $1 AND revoked = false',
-                [deviceId]
+            // Check if any whitelist entries exist
+            const { rows: allWhitelist } = await pool.query(
+                'SELECT COUNT(*) as count FROM admin_whitelist WHERE revoked = false'
             );
 
-            if (whitelistRows.length === 0) {
-                // Check if this is the primary admin device (hardcoded in seed)
-                const { rows: primaryAdmin } = await pool.query(
-                    `SELECT * FROM admin_whitelist 
-                     WHERE notes = 'Primary Admin Device' AND device_id = $1`,
+            const whitelistEmpty = parseInt(allWhitelist[0].count) === 0;
+
+            if (!whitelistEmpty) {
+                // Whitelist has entries - enforce it
+                const { rows: whitelistRows } = await pool.query(
+                    'SELECT * FROM admin_whitelist WHERE device_id = $1 AND revoked = false',
                     [deviceId]
                 );
 
-                if (primaryAdmin.length === 0) {
+                if (whitelistRows.length === 0) {
                     return res.status(403).json({
                         error: 'Admin access denied',
                         message: 'This device is not whitelisted for admin access'
                     });
                 }
+            } else {
+                // First admin login - auto-whitelist this device
+                await pool.query(
+                    `INSERT INTO admin_whitelist (device_id, device_name, granted_by, notes)
+                     VALUES ($1, $2, $3, 'Auto-whitelisted on first admin login')
+                     ON CONFLICT (device_id) DO NOTHING`,
+                    [deviceId, deviceName || 'Admin Device', user.id]
+                );
             }
         }
 
