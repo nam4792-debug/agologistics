@@ -1,5 +1,7 @@
-const { app, BrowserWindow, Menu, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
 const path = require('path');
+const crypto = require('crypto');
+const os = require('os');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -21,6 +23,7 @@ function createWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             enableRemoteModule: false,
+            preload: path.join(__dirname, 'preload.cjs'),
         },
         icon: path.join(__dirname, 'public/icon.png'),
         titleBarStyle: 'hiddenInset', // macOS style
@@ -131,6 +134,85 @@ function createMenu() {
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
 }
+
+// ============================================
+// DEVICE ID GENERATION (for hardware fingerprint)
+// ============================================
+
+function generateDeviceId() {
+    const components = [];
+
+    // 1. CPU info
+    const cpus = os.cpus();
+    if (cpus && cpus.length > 0) {
+        components.push(cpus[0].model);
+        components.push(`cores:${cpus.length}`);
+    }
+
+    // 2. Hostname
+    components.push(os.hostname());
+
+    // 3. Platform and architecture
+    components.push(os.platform());
+    components.push(os.arch());
+
+    // 4. Primary MAC address
+    const networkInterfaces = os.networkInterfaces();
+    let macAddress = '';
+
+    for (const [name, interfaces] of Object.entries(networkInterfaces)) {
+        if (!interfaces) continue;
+
+        for (const iface of interfaces) {
+            if (!iface.internal && iface.mac && iface.mac !== '00:00:00:00:00:00') {
+                macAddress = iface.mac;
+                break;
+            }
+        }
+        if (macAddress) break;
+    }
+
+    if (macAddress) {
+        components.push(macAddress);
+    }
+
+    // Combine and hash
+    const combined = components.join('|');
+    const hash = crypto.createHash('sha256').update(combined).digest('hex');
+
+    return hash;
+}
+
+function getDeviceInfo() {
+    const platform = os.platform();
+    const release = os.release();
+
+    let osName = '';
+    switch (platform) {
+        case 'darwin':
+            osName = 'macOS';
+            break;
+        case 'win32':
+            osName = 'Windows';
+            break;
+        case 'linux':
+            osName = 'Linux';
+            break;
+        default:
+            osName = platform;
+    }
+
+    return {
+        deviceId: generateDeviceId(),
+        deviceName: os.hostname(),
+        osInfo: `${osName} ${release}`,
+    };
+}
+
+// IPC Handlers
+ipcMain.handle('get-device-info', async () => {
+    return getDeviceInfo();
+});
 
 // App lifecycle
 app.whenReady().then(() => {

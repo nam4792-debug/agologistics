@@ -1,234 +1,162 @@
 const pool = require('../config/database');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
 
+// IMPORTANT: Set your machine's device ID here after first run
+// Run the app once to get your device ID from the console, then paste it here
+const PRIMARY_ADMIN_DEVICE_ID = process.env.PRIMARY_ADMIN_DEVICE_ID || 'SET_YOUR_DEVICE_ID_HERE';
+
 async function seedDatabase() {
-    console.log('🌱 Seeding database with sample data...\n');
+    console.log('🌱 Seeding database with initial data...\n');
 
     try {
-        // Get user IDs
-        const { rows: users } = await pool.query('SELECT id, email FROM users LIMIT 1');
-        const userId = users[0]?.id;
-
-        // Get forwarder IDs
-        const { rows: forwarders } = await pool.query('SELECT id FROM forwarders LIMIT 1');
-        const forwarderId = forwarders[0]?.id;
-
-        // Get customer IDs
-        const { rows: customers } = await pool.query('SELECT id FROM customers LIMIT 1');
-        const customerId = customers[0]?.id;
-
-        if (!userId || !forwarderId || !customerId) {
-            console.log('⚠️ Please run db:init first to create base data');
-            process.exit(1);
+        // Check if users already exist
+        const { rows: existingUsers } = await pool.query('SELECT COUNT(*) as count FROM users');
+        if (existingUsers[0].count > 0) {
+            console.log('⚠️  Database already seeded. Skipping...\n');
+            return;
         }
 
-        // Create sample shipments
-        const shipmentData = [
-            {
-                shipment_number: 'A59FX15608',
-                type: 'FCL',
-                status: 'IN_TRANSIT',
-                origin_port: 'Ho Chi Minh City',
-                destination_port: 'Chennai',
-                origin_country: 'Vietnam',
-                destination_country: 'India',
-                cargo_description: 'Fresh Dragon Fruit',
-                cargo_weight_kg: 18500,
-                container_count: 1,
-                container_type: '40RF',
-                incoterm: 'CIF',
-                etd: new Date('2026-02-05'),
-                eta: new Date('2026-02-12'),
-            },
-            {
-                shipment_number: 'A59FX15609',
-                type: 'FCL',
-                status: 'CUSTOMS_CLEARED',
-                origin_port: 'Ho Chi Minh City',
-                destination_port: 'Tokyo',
-                origin_country: 'Vietnam',
-                destination_country: 'Japan',
-                cargo_description: 'Fresh Mango',
-                cargo_weight_kg: 22000,
-                container_count: 1,
-                container_type: '40RF',
-                incoterm: 'FOB',
-                etd: new Date('2026-02-01'),
-                eta: new Date('2026-02-05'),
-            },
-            {
-                shipment_number: 'A59FX15610',
-                type: 'FCL',
-                status: 'LOADING',
-                origin_port: 'Ho Chi Minh City',
-                destination_port: 'Shanghai',
-                origin_country: 'Vietnam',
-                destination_country: 'China',
-                cargo_description: 'Agricultural Products',
-                cargo_weight_kg: 24000,
-                container_count: 2,
-                container_type: '40RF',
-                incoterm: 'CFR',
-                etd: new Date('2026-02-02'),
-                eta: new Date('2026-02-08'),
-            },
-        ];
+        const passwordHash = await bcrypt.hash('admin123', 10);
 
-        for (const shipment of shipmentData) {
-            await pool.query(
-                `INSERT INTO shipments 
-         (shipment_number, type, status, customer_id, forwarder_id,
-          origin_port, destination_port, origin_country, destination_country,
-          cargo_description, cargo_weight_kg, container_count, container_type,
-          incoterm, etd, eta, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-         ON CONFLICT (shipment_number) DO NOTHING`,
-                [
-                    shipment.shipment_number,
-                    shipment.type,
-                    shipment.status,
-                    customerId,
-                    forwarderId,
-                    shipment.origin_port,
-                    shipment.destination_port,
-                    shipment.origin_country,
-                    shipment.destination_country,
-                    shipment.cargo_description,
-                    shipment.cargo_weight_kg,
-                    shipment.container_count,
-                    shipment.container_type,
-                    shipment.incoterm,
-                    shipment.etd,
-                    shipment.eta,
-                    userId,
-                ]
-            );
-        }
-
-        console.log('✅ Shipments created');
-
-        // Get shipment ID for bookings
-        const { rows: shipments } = await pool.query(
-            "SELECT id FROM shipments WHERE shipment_number = 'A59FX15608'"
+        // Create admin user
+        const { rows: adminRows } = await pool.query(
+            `INSERT INTO users (email, password_hash, full_name, role, department)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            ['admin@logispro.vn', passwordHash, 'Primary Admin', 'ADMIN', 'IT']
         );
-        const shipmentId = shipments[0]?.id;
 
-        // Create sample bookings with deadlines
-        const now = new Date();
-        const bookingData = [
-            {
-                booking_number: 'BK-2026-0145',
-                type: 'FCL',
-                status: 'PENDING',
-                vessel_flight: 'COSCO SHIPPING TAURUS',
-                voyage_number: 'V.2608W',
-                route: 'Ho Chi Minh → Chennai',
-                origin_port: 'Ho Chi Minh City',
-                destination_port: 'Chennai',
-                container_type: '40RF',
-                container_count: 1,
-                etd: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
-                eta: new Date(now.getTime() + 12 * 24 * 60 * 60 * 1000), // 12 days from now
-                freight_rate_usd: 2850,
-                // Deadlines - 2 days from now (for testing alerts)
-                cut_off_si: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
-                cut_off_vgm: new Date(now.getTime() + 2.5 * 24 * 60 * 60 * 1000),
-                cut_off_cy: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
-            },
-            {
-                booking_number: 'BK-2026-0146',
-                type: 'FCL',
-                status: 'PENDING',
-                vessel_flight: 'EVERGREEN EVER GIVEN',
-                voyage_number: 'V.2609E',
-                route: 'Ho Chi Minh → Tokyo',
-                origin_port: 'Ho Chi Minh City',
-                destination_port: 'Tokyo',
-                container_type: '40RF',
-                container_count: 1,
-                etd: new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000),
-                eta: new Date(now.getTime() + 8 * 24 * 60 * 60 * 1000),
-                freight_rate_usd: 3200,
-                // Deadlines - 10 hours from now (for urgent alert testing)
-                cut_off_si: new Date(now.getTime() + 10 * 60 * 60 * 1000),
-                cut_off_vgm: new Date(now.getTime() + 12 * 60 * 60 * 1000),
-                cut_off_cy: new Date(now.getTime() + 18 * 60 * 60 * 1000),
-            },
-        ];
+        const admin = adminRows[0];
+        console.log('✅ Admin user created:');
+        console.log(`   Email: ${admin.email}`);
+        console.log(`   Password: admin123`);
+        console.log(`   Role: ${admin.role}\n`);
 
-        for (const booking of bookingData) {
-            const { rows: bookingRows } = await pool.query(
-                `INSERT INTO bookings 
-         (booking_number, shipment_id, forwarder_id, type, status,
-          vessel_flight, voyage_number, route, origin_port, destination_port,
-          container_type, container_count, etd, eta, freight_rate_usd, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-         ON CONFLICT (booking_number) DO NOTHING
-         RETURNING id`,
-                [
-                    booking.booking_number,
-                    shipmentId,
-                    forwarderId,
-                    booking.type,
-                    booking.status,
-                    booking.vessel_flight,
-                    booking.voyage_number,
-                    booking.route,
-                    booking.origin_port,
-                    booking.destination_port,
-                    booking.container_type,
-                    booking.container_count,
-                    booking.etd,
-                    booking.eta,
-                    booking.freight_rate_usd,
-                    userId,
-                ]
-            );
-
-            if (bookingRows.length > 0) {
-                // Create deadlines for booking
-                await pool.query(
-                    `INSERT INTO booking_deadlines 
-           (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT DO NOTHING`,
-                    [
-                        bookingRows[0].id,
-                        booking.cut_off_si,
-                        booking.cut_off_vgm,
-                        booking.cut_off_cy,
-                    ]
-                );
+        // Generate license for admin
+        function generateLicenseKey() {
+            const segments = [];
+            for (let i = 0; i < 4; i++) {
+                const segment = crypto.randomBytes(2).toString('hex').toUpperCase();
+                segments.push(segment);
             }
+            return segments.join('-');
         }
 
-        console.log('✅ Bookings with deadlines created');
-
-        // Create sample alerts
-        await pool.query(
-            `INSERT INTO alerts (shipment_id, type, severity, title, description)
-       VALUES 
-         ($1, 'DOCUMENT_MISSING', 'HIGH', 'Missing Phytosanitary Certificate', 'Shipment requires phytosanitary certificate for fresh produce'),
-         ($1, 'DEADLINE_APPROACHING', 'MEDIUM', 'SI Cut-off in 48h', 'Shipping instruction deadline approaching')
-       ON CONFLICT DO NOTHING`,
-            [shipmentId]
+        const adminLicenseKey = generateLicenseKey();
+        const { rows: licenseRows } = await pool.query(
+            `INSERT INTO licenses (license_key, user_id, type, max_devices, expires_at)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [adminLicenseKey, admin.id, 'PREMIUM', 1, null] // No expiration for admin
         );
 
-        console.log('✅ Sample alerts created');
+        console.log('✅ Admin license created:');
+        console.log(`   License Key: ${adminLicenseKey}`);
+        console.log(`   Type: PREMIUM`);
+        console.log(`   Expires: Never\n`);
 
-        console.log('\n🎉 Database seeding complete!\n');
-        console.log('📊 Sample data created:');
-        console.log('   - 3 shipments');
-        console.log('   - 2 bookings with deadlines');
-        console.log('   - 2 alerts\n');
-        console.log('💡 Tip: Run the server to test deadline monitoring!');
-        console.log('   The second booking has deadlines ~10 hours away for testing.\n');
+        // Add primary admin device to whitelist
+        if (PRIMARY_ADMIN_DEVICE_ID !== 'SET_YOUR_DEVICE_ID_HERE') {
+            await pool.query(
+                `INSERT INTO admin_whitelist (device_id, device_name, granted_by, notes)
+                 VALUES ($1, $2, $3, $4)`,
+                [PRIMARY_ADMIN_DEVICE_ID, 'Primary Admin Device', admin.id, 'Primary Admin Device']
+            );
+            console.log('✅ Primary admin device whitelisted');
+            console.log(`   Device ID: ${PRIMARY_ADMIN_DEVICE_ID}\n`);
+        } else {
+            console.log('⚠️  PRIMARY_ADMIN_DEVICE_ID not set!');
+            console.log('   To whitelist your device:');
+            console.log('   1. Login to the app once to get your device ID');
+            console.log('   2. Set PRIMARY_ADMIN_DEVICE_ID environment variable');
+            console.log('   3. Or manually insert into admin_whitelist table\n');
+        }
 
-        process.exit(0);
+        // Create sample staff users
+        const staffUsers = [
+            { email: 'logistics@logispro.vn', name: 'Logistics Manager', role: 'LOGISTICS_MANAGER', dept: 'Logistics' },
+            { email: 'sales@logispro.vn', name: 'Sales Coordinator', role: 'SALES', dept: 'Sales' },
+        ];
+
+        for (const staff of staffUsers) {
+            const { rows: userRows } = await pool.query(
+                `INSERT INTO users (email, password_hash, full_name, role, department)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING *`,
+                [staff.email, passwordHash, staff.name, staff.role, staff.dept]
+            );
+
+            // Create license for staff
+            const licenseKey = generateLicenseKey();
+            await pool.query(
+                `INSERT INTO licenses (license_key, user_id, type, max_devices)
+                 VALUES ($1, $2, $3, $4)`,
+                [licenseKey, userRows[0].id, 'STANDARD', 1]
+            );
+
+            console.log(`✅ ${staff.name} created (${staff.email}/${licenseKey})`);
+        }
+
+        console.log('\n✅ Sample users created');
+        console.log('   All accounts use password: admin123\n');
+
+        // Create sample forwarders
+        const forwarders = [
+            { name: 'ABC Logistics', contact: 'John Smith', email: 'john@abclogistics.com', grade: 'A' },
+            { name: 'Global Shipping Co', contact: 'Sarah Lee', email: 'sarah@globalshipping.com', grade: 'A' },
+            { name: 'FastCargo VN', contact: 'Minh Nguyen', email: 'minh@fastcargo.vn', grade: 'B' },
+        ];
+
+        for (const fwd of forwarders) {
+            await pool.query(
+                `INSERT INTO forwarders (company_name, contact_name, email, phone, grade, on_time_rate, doc_accuracy_rate)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [fwd.name, fwd.contact, fwd.email, '+84-28-1234-5678', fwd.grade, 94.5, 98.2]
+            );
+        }
+
+        console.log('✅ Sample forwarders created\n');
+
+        // Create sample customers
+        const customers = [
+            { code: 'CUST001', name: 'Chennai Fresh Foods', contact: 'Raj Kumar', country: 'India' },
+            { code: 'CUST002', name: 'Tokyo Fruits Import', contact: 'Takeshi Honda', country: 'Japan' },
+            { code: 'CUST003', name: 'Dubai Premium Goods', contact: 'Ahmed Al-Rashid', country: 'UAE' },
+        ];
+
+        for (const cust of customers) {
+            await pool.query(
+                `INSERT INTO customers (customer_code, company_name, contact_name, email, phone, country)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [cust.code, cust.name, cust.contact, `${cust.contact.toLowerCase().replace(' ', '.')}@${cust.name.toLowerCase().replace(/\s+/g, '')}.com`, '+1-234-567-8900', cust.country]
+            );
+        }
+
+        console.log('✅ Sample customers created\n');
+
+        console.log('🎉 Database seeding complete!\n');
+        console.log('📝 Next steps:');
+        console.log('   1. Start the server: npm run dev');
+        console.log('   2. Login with admin@logispro.vn / admin123');
+        console.log('   3. Your device will be automatically bound to the license');
+        console.log('   4. Set your device ID as PRIMARY_ADMIN_DEVICE_ID for admin access\n');
+
     } catch (error) {
         console.error('❌ Seeding failed:', error);
-        process.exit(1);
+        throw error;
     }
 }
 
-seedDatabase();
+// Run if called directly
+if (require.main === module) {
+    seedDatabase()
+        .then(() => process.exit(0))
+        .catch((err) => {
+            console.error(err);
+            process.exit(1);
+        });
+}
+
+module.exports = seedDatabase;

@@ -4,13 +4,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 
-// Login
+// Login with device binding
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, deviceId, deviceName, osInfo } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        if (!deviceId) {
+            return res.status(400).json({ error: 'Device ID is required' });
         }
 
         // Find user
@@ -31,9 +35,95 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        // Get user's license
+        const { rows: licenseRows } = await pool.query(
+            'SELECT * FROM licenses WHERE user_id = $1',
+            [user.id]
+        );
+
+        if (licenseRows.length === 0) {
+            return res.status(403).json({ error: 'No license found for this account' });
+        }
+
+        const license = licenseRows[0];
+
+        // Check if license is revoked
+        if (license.revoked) {
+            return res.status(403).json({
+                error: 'License has been revoked',
+                reason: license.revoked_reason
+            });
+        }
+
+        // Check if license is expired
+        if (license.expires_at && new Date(license.expires_at) < new Date()) {
+            return res.status(403).json({ error: 'License has expired' });
+        }
+
+        // Check device activation
+        const { rows: deviceRows } = await pool.query(
+            'SELECT * FROM device_activations WHERE license_key = $1',
+            [license.license_key]
+        );
+
+        if (deviceRows.length === 0) {
+            // First login - activate device
+            await pool.query(
+                `INSERT INTO device_activations (license_key, user_id, device_id, device_name, os_info)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [license.license_key, user.id, deviceId, deviceName, osInfo]
+            );
+            console.log(`✅ Device activated for ${email}: ${deviceName}`);
+        } else {
+            // Check if device matches
+            const activation = deviceRows[0];
+            if (activation.device_id !== deviceId) {
+                return res.status(403).json({
+                    error: 'This account is bound to a different device',
+                    boundDevice: activation.device_name,
+                    message: 'Please contact admin to reset device binding'
+                });
+            }
+
+            // Update last_seen
+            await pool.query(
+                'UPDATE device_activations SET last_seen = NOW() WHERE device_id = $1',
+                [deviceId]
+            );
+        }
+
+        // If user is ADMIN, check whitelist
+        if (user.role === 'ADMIN') {
+            const { rows: whitelistRows } = await pool.query(
+                'SELECT * FROM admin_whitelist WHERE device_id = $1 AND revoked = false',
+                [deviceId]
+            );
+
+            if (whitelistRows.length === 0) {
+                // Check if this is the primary admin device (hardcoded in seed)
+                const { rows: primaryAdmin } = await pool.query(
+                    `SELECT * FROM admin_whitelist 
+                     WHERE notes = 'Primary Admin Device' AND device_id = $1`,
+                    [deviceId]
+                );
+
+                if (primaryAdmin.length === 0) {
+                    return res.status(403).json({
+                        error: 'Admin access denied',
+                        message: 'This device is not whitelisted for admin access'
+                    });
+                }
+            }
+        }
+
         // Generate JWT
         const token = jwt.sign(
-            { userId: user.id, email: user.email, role: user.role },
+            {
+                userId: user.id,
+                email: user.email,
+                role: user.role,
+                deviceId: deviceId
+            },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '7d' }
         );
@@ -44,6 +134,10 @@ router.post('/login', async (req, res) => {
         res.json({
             token,
             user,
+            license: {
+                type: license.type,
+                expiresAt: license.expires_at
+            }
         });
     } catch (error) {
         console.error('Login error:', error);

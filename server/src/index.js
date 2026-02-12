@@ -9,6 +9,8 @@ const pool = require('./config/database');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+const licensesRoutes = require('./routes/licenses');
+const adminRoutes = require('./routes/admin');
 const bookingsRoutes = require('./routes/bookings');
 const shipmentsRoutes = require('./routes/shipments');
 const documentsRoutes = require('./routes/documents');
@@ -58,6 +60,8 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/licenses', licensesRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/bookings', bookingsRoutes);
 app.use('/api/shipments', shipmentsRoutes);
 app.use('/api/documents', documentsRoutes);
@@ -95,6 +99,20 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`🔌 Client disconnected: ${socket.id}`);
     });
+});
+
+// Serve frontend static files
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../public')));
+
+// SPA catch-all route - MUST be after API routes but before error handler
+app.get('*', (req, res) => {
+    // Only serve index.html for non-API routes
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+        res.sendFile(path.join(__dirname, '../public/index.html'));
+    } else {
+        res.status(404).json({ error: 'API endpoint not found' });
+    }
 });
 
 // Error handling middleware

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     Ship,
@@ -14,6 +14,7 @@ import {
 import { Card, CardContent, Button, Input, StatusBadge } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
 import { NewShipmentModal } from '@/components/modals';
+import { useShipments } from '@/hooks';
 import toast from 'react-hot-toast';
 
 interface ShipmentData {
@@ -39,34 +40,15 @@ export function ShipmentList() {
     const navigate = useNavigate();
     const [showNewShipmentModal, setShowNewShipmentModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [shipments, setShipments] = useState<ShipmentData[]>([]);
-    const [loading, setLoading] = useState(true);
 
-    // Fetch shipments from API
-    const fetchShipments = async () => {
-        setLoading(true);
-        try {
-            const res = await fetch('http://localhost:3001/api/shipments');
-            const data = await res.json();
-            if (data.shipments) {
-                setShipments(data.shipments);
-            }
-        } catch (error) {
-            console.error('Failed to fetch shipments:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchShipments();
-    }, []);
+    // Use real-time hook instead of manual fetch
+    const { shipments, loading, refetch } = useShipments();
 
     // Powerful search that searches ALL fields
     // Filter: Only show shipments with confirmed statuses
     const confirmedStatuses = ['BOOKING_CONFIRMED', 'DOCUMENTATION_IN', 'READY_TO', 'LOADING', 'LOADED', 'IN_TRANSIT'];
 
-    const filteredShipments = shipments
+    const filteredShipments = (shipments as unknown as ShipmentData[])
         .filter(s => confirmedStatuses.includes(s.status)) // Only show confirmed+
         .filter(s => {
             if (!searchQuery.trim()) return true;
@@ -93,7 +75,7 @@ export function ShipmentList() {
         });
 
     const handleShipmentCreated = () => {
-        fetchShipments();
+        refetch();
         setShowNewShipmentModal(false);
     };
 
@@ -115,7 +97,7 @@ export function ShipmentList() {
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={fetchShipments} disabled={loading}>
+                        <Button variant="outline" onClick={refetch} disabled={loading}>
                             <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
                             Refresh
                         </Button>
@@ -258,7 +240,7 @@ export function ShipmentList() {
                                                                         });
                                                                         if (response.ok) {
                                                                             toast.success('Shipment deleted successfully');
-                                                                            fetchShipments();
+                                                                            // Real-time sync will auto-update
                                                                         } else {
                                                                             const data = await response.json();
                                                                             toast.error(data.error || 'Failed to delete shipment');

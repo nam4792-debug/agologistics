@@ -9,13 +9,19 @@ interface User {
     department?: string;
 }
 
+interface License {
+    type: string;
+    expiresAt?: string;
+}
+
 interface AuthState {
     user: User | null;
     token: string | null;
+    license: License | null;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<boolean>;
+    login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => void;
-    setUser: (user: User, token: string) => void;
+    setUser: (user: User, token: string, license?: License) => void;
 }
 
 // Get API URL from environment or default to localhost
@@ -26,30 +32,60 @@ export const useAuthStore = create<AuthState>()(
         (set) => ({
             user: null,
             token: null,
+            license: null,
             isAuthenticated: false,
 
-            login: async (email: string, password: string): Promise<boolean> => {
+            login: async (email: string, password: string) => {
                 try {
+                    // Get device info
+                    const { getDeviceInfo } = await import('../lib/deviceId');
+                    const deviceInfo = await getDeviceInfo();
+
                     const response = await fetch(`${API_URL}/api/auth/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email, password }),
+                        body: JSON.stringify({
+                            email,
+                            password,
+                            deviceId: deviceInfo.deviceId,
+                            deviceName: deviceInfo.deviceName,
+                            osInfo: deviceInfo.osInfo,
+                        }),
                     });
 
                     const data = await response.json();
 
-                    if (data.success && data.token) {
+                    if (!response.ok) {
+                        // Return specific error messages
+                        return {
+                            success: false,
+                            error: data.error || data.message || 'Login failed',
+                        };
+                    }
+
+                    // API returns { token, user, license }
+                    if (data.token && data.user) {
                         set({
-                            user: data.user,
+                            user: {
+                                id: data.user.id,
+                                email: data.user.email,
+                                fullName: data.user.full_name,
+                                role: data.user.role,
+                                department: data.user.department,
+                            },
                             token: data.token,
+                            license: data.license || null,
                             isAuthenticated: true,
                         });
-                        return true;
+                        return { success: true };
                     }
-                    return false;
+                    return { success: false, error: 'Invalid response from server' };
                 } catch (error) {
                     console.error('Login error:', error);
-                    return false;
+                    return {
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Network error',
+                    };
                 }
             },
 
@@ -57,14 +93,16 @@ export const useAuthStore = create<AuthState>()(
                 set({
                     user: null,
                     token: null,
+                    license: null,
                     isAuthenticated: false,
                 });
             },
 
-            setUser: (user: User, token: string) => {
+            setUser: (user: User, token: string, license?: License) => {
                 set({
                     user,
                     token,
+                    license: license || null,
                     isAuthenticated: true,
                 });
             },

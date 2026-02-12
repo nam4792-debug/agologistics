@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS sync_status (
   token_expiry TEXT,
   last_sync TEXT,
   root_folder_id TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (NOW())
 );
 
 -- ============================================
@@ -365,7 +365,7 @@ CREATE TABLE IF NOT EXISTS backups (
   file_name TEXT NOT NULL,
   file_size_bytes INTEGER,
   backup_type TEXT, -- 'database' | 'documents'
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (NOW())
 );
 
 CREATE INDEX idx_backups_provider ON backups(provider);
@@ -379,3 +379,57 @@ CREATE TABLE IF NOT EXISTS document_sync (
   drive_file_id TEXT,
   synced_at TEXT
 );
+
+-- ============================================
+-- LICENSE MANAGEMENT TABLES
+-- ============================================
+
+-- LICENSE KEYS TABLE
+CREATE TABLE IF NOT EXISTS licenses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  license_key VARCHAR(100) UNIQUE NOT NULL,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  type VARCHAR(50) DEFAULT 'STANDARD', -- TRIAL, STANDARD, PREMIUM
+  max_devices INTEGER DEFAULT 1, -- Device-based: 1 license = 1 device
+  expires_at TIMESTAMP,
+  revoked BOOLEAN DEFAULT false,
+  revoked_at TIMESTAMP,
+  revoked_reason TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_licenses_key ON licenses(license_key);
+CREATE INDEX idx_licenses_user ON licenses(user_id);
+CREATE INDEX idx_licenses_status ON licenses(revoked, expires_at);
+
+-- DEVICE ACTIVATIONS TABLE
+CREATE TABLE IF NOT EXISTS device_activations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  license_key VARCHAR(100) REFERENCES licenses(license_key) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  device_id VARCHAR(200) UNIQUE NOT NULL, -- Hardware fingerprint (CPU + Motherboard hash)
+  device_name VARCHAR(200), -- Computer name
+  os_info VARCHAR(100), -- Windows 11, macOS 14.2, etc.
+  activated_at TIMESTAMP DEFAULT NOW(),
+  last_seen TIMESTAMP DEFAULT NOW(),
+  is_active BOOLEAN DEFAULT true
+);
+
+CREATE INDEX idx_device_activations_license ON device_activations(license_key);
+CREATE INDEX idx_device_activations_device ON device_activations(device_id);
+CREATE INDEX idx_device_activations_user ON device_activations(user_id);
+
+-- ADMIN WHITELIST TABLE (Hardware-locked admin access)
+CREATE TABLE IF NOT EXISTS admin_whitelist (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  device_id VARCHAR(200) UNIQUE NOT NULL, -- Whitelisted machine ID
+  device_name VARCHAR(200),
+  granted_by UUID REFERENCES users(id),
+  granted_at TIMESTAMP DEFAULT NOW(),
+  revoked BOOLEAN DEFAULT false,
+  revoked_at TIMESTAMP,
+  notes TEXT
+);
+
+CREATE INDEX idx_admin_whitelist_device ON admin_whitelist(device_id, revoked);

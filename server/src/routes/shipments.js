@@ -171,7 +171,13 @@ router.post('/', async (req, res) => {
             [id]
         );
 
-        res.status(201).json({ shipment: newShipment[0] || { id, shipment_number: shipmentNumber } });
+        const createdShipment = newShipment[0] || { id, shipment_number: shipmentNumber };
+
+        // Emit real-time event
+        const io = req.app.get('io');
+        if (io) io.emit('shipment:created', createdShipment);
+
+        res.status(201).json({ shipment: createdShipment });
     } catch (error) {
         console.error('Error creating shipment:', error);
         res.status(500).json({ error: error.message || 'Internal server error' });
@@ -226,6 +232,10 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Shipment not found' });
         }
 
+        // Emit real-time event
+        const io = req.app.get('io');
+        if (io) io.emit('shipment:updated', rows[0]);
+
         res.json({ shipment: rows[0] });
     } catch (error) {
         console.error('Error updating shipment:', error);
@@ -249,6 +259,10 @@ router.patch('/:id/status', async (req, res) => {
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Shipment not found' });
         }
+
+        // Emit real-time event
+        const io = req.app.get('io');
+        if (io) io.emit('shipment:updated', rows[0]);
 
         res.json({ shipment: rows[0] });
     } catch (error) {
@@ -295,6 +309,10 @@ router.delete('/:id', async (req, res) => {
             'DELETE FROM shipments WHERE id = ?',
             [shipmentId]
         );
+
+        // Emit real-time event
+        const io = req.app.get('io');
+        if (io) io.emit('shipment:deleted', { id: shipmentId });
 
         res.json({ message: 'Shipment deleted successfully' });
     } catch (error) {

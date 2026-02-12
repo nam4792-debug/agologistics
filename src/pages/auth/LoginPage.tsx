@@ -18,13 +18,13 @@ export function LoginPage() {
         setLoading(true);
 
         try {
-            const success = await login(email, password);
-            if (success) {
+            const result = await login(email, password);
+            if (result.success) {
                 navigate('/');
             } else {
-                setError('Email hoặc mật khẩu không đúng');
+                setError(result.error || 'Email hoặc mật khẩu không đúng');
             }
-        } catch {
+        } catch (err) {
             setError('Không thể kết nối server');
         } finally {
             setLoading(false);

@@ -7,12 +7,20 @@ services:
     name: logispro-api
     runtime: node
     rootDir: server
-    buildCommand: npm install && npm rebuild better-sqlite3
+    buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3001
+      - key: DATABASE_URL
+        sync: false  # Add manually from Render PostgreSQL
+      - key: JWT_SECRET
+        generateValue: true
+    healthCheckPath: /health
     autoDeploy: true
     plan: free
+
+# Note: You need to manually create PostgreSQL database on Render
+# and add DATABASE_URL to environment variables
