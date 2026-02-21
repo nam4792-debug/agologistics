@@ -3,9 +3,10 @@ const router = express.Router();
 const pool = require('../config/database');
 const workflowService = require('../services/workflowService');
 const { authenticateToken } = require('./auth');
+const auditService = require('../services/auditService');
 
 // Get all tasks
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { status, bookingId, assignedTo, type } = req.query;
 
@@ -55,7 +56,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single task
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT t.*, 
@@ -81,7 +82,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create task
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
     try {
         const {
             bookingId,
@@ -111,6 +112,12 @@ router.post('/', async (req, res) => {
             ]
         );
 
+        // Audit trail
+        auditService.log('task', rows[0].id, 'CREATE', req.user?.userId || null, {
+            title: title,
+            task_type: taskType,
+        });
+
         res.status(201).json({ task: rows[0] });
     } catch (error) {
         console.error('Error creating task:', error);
@@ -128,6 +135,9 @@ router.patch('/:id/complete', authenticateToken, async (req, res) => {
             io
         );
 
+        // Audit trail
+        auditService.log('task', req.params.id, 'COMPLETE', req.user?.userId || null, {});
+
         res.json({
             message: 'Task completed',
             task,
@@ -139,7 +149,7 @@ router.patch('/:id/complete', authenticateToken, async (req, res) => {
 });
 
 // Update task
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
     try {
         const updates = req.body;
         const fields = [];
@@ -171,6 +181,11 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Task not found' });
         }
 
+        // Audit trail
+        auditService.log('task', req.params.id, 'UPDATE', req.user?.userId || null, {
+            updated_fields: Object.keys(req.body),
+        });
+
         res.json({ task: rows[0] });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -178,7 +193,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete task
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             'DELETE FROM tasks WHERE id = $1 RETURNING id',
@@ -188,6 +203,9 @@ router.delete('/:id', async (req, res) => {
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Task not found' });
         }
+
+        // Audit trail
+        auditService.log('task', req.params.id, 'DELETE', req.user?.userId || null, {});
 
         res.json({ message: 'Task deleted' });
     } catch (error) {

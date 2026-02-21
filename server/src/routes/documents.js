@@ -6,6 +6,7 @@ const fs = require('fs').promises;
 const crypto = require('crypto');
 const pool = require('../config/database');
 const { authenticateToken } = require('./auth');
+const auditService = require('../services/auditService');
 
 // Configure multer storage
 const storage = multer.diskStorage({
@@ -57,14 +58,14 @@ const upload = multer({
 });
 
 // Get all documents or filter by shipmentId query param
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { shipmentId } = req.query;
-        let query = 'SELECT * FROM documents ORDER BY created_at DESC';
+        let query = 'SELECT * FROM documents WHERE deleted_at IS NULL ORDER BY created_at DESC';
         const params = [];
 
         if (shipmentId) {
-            query = 'SELECT * FROM documents WHERE shipment_id = $1 ORDER BY created_at DESC';
+            query = 'SELECT * FROM documents WHERE shipment_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC';
             params.push(shipmentId);
         }
 
@@ -77,13 +78,13 @@ router.get('/', async (req, res) => {
 });
 
 // Upload single file
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', authenticateToken, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const { shipmentId, documentType, documentNumber, issueDate, expiryDate, issuer } = req.body;
+        const { shipmentId, documentType, documentNumber, issueDate, expiryDate, issuer, bookingId } = req.body;
 
         if (!shipmentId) {
             return res.status(400).json({ error: 'shipmentId is required' });
@@ -101,16 +102,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         );
         const version = (existing[0]?.max_version || 0) + 1;
 
-        // Save to database
+        // Save to database (with optional booking_id)
         const { rows } = await pool.query(
             `INSERT INTO documents 
-       (shipment_id, document_type, document_number, version,
+       (shipment_id, booking_id, document_type, document_number, version,
         file_path, file_name, file_size_bytes, file_type, file_hash,
         issue_date, expiry_date, issuer, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'UPLOADED')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'UPLOADED')
        RETURNING *`,
             [
                 shipmentId,
+                bookingId || null,
                 documentType || 'GENERAL',
                 documentNumber,
                 version,
@@ -127,6 +129,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
         console.log(`📄 Document uploaded: ${req.file.originalname} for shipment ${shipmentId}`);
 
+        // Audit trail
+        auditService.log('document', rows[0].id, 'UPLOAD', req.user?.userId || null, {
+            file_name: req.file.originalname,
+            document_type: documentType || 'GENERAL',
+            shipment_id: shipmentId,
+        });
+
         res.status(201).json({
             success: true,
             document: rows[0],
@@ -139,13 +148,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // Upload multiple files
-router.post('/upload-multiple', upload.array('files', 10), async (req, res) => {
+router.post('/upload-multiple', authenticateToken, upload.array('files', 10), async (req, res) => {
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });
         }
 
-        const { shipmentId, documentType } = req.body;
+        const { shipmentId, documentType, bookingId } = req.body;
 
         if (!shipmentId) {
             return res.status(400).json({ error: 'shipmentId is required' });
@@ -159,11 +168,12 @@ router.post('/upload-multiple', upload.array('files', 10), async (req, res) => {
 
             const { rows } = await pool.query(
                 `INSERT INTO documents 
-         (shipment_id, document_type, file_path, file_name, file_size_bytes, file_type, file_hash, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'UPLOADED')
+         (shipment_id, booking_id, document_type, file_path, file_name, file_size_bytes, file_type, file_hash, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'UPLOADED')
          RETURNING *`,
                 [
                     shipmentId,
+                    bookingId || null,
                     documentType || 'GENERAL',
                     file.path,
                     file.originalname,
@@ -188,7 +198,7 @@ router.post('/upload-multiple', upload.array('files', 10), async (req, res) => {
 });
 
 // Get documents for shipment
-router.get('/shipment/:shipmentId', async (req, res) => {
+router.get('/shipment/:shipmentId', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT d.*, u.full_name as uploaded_by_name
@@ -220,7 +230,7 @@ router.get('/shipment/:shipmentId', async (req, res) => {
 });
 
 // Get single document
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             'SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL',
@@ -238,7 +248,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Download document
-router.get('/:id/download', async (req, res) => {
+router.get('/:id/download', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             'SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL',
@@ -266,7 +276,7 @@ router.get('/:id/download', async (req, res) => {
 });
 
 // Preview document (for PDFs and images)
-router.get('/:id/preview', async (req, res) => {
+router.get('/:id/preview', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             'SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL',
@@ -292,7 +302,7 @@ router.get('/:id/preview', async (req, res) => {
 });
 
 // Update document status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', authenticateToken, async (req, res) => {
     try {
         const { status } = req.body;
         const validStatuses = ['UPLOADED', 'VALIDATED', 'APPROVED', 'SUBMITTED', 'REJECTED'];
@@ -317,10 +327,10 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // Soft delete document
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
-            'UPDATE documents SET deleted_at = NOW() WHERE id = $1 RETURNING id',
+            'UPDATE documents SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id',
             [req.params.id]
         );
 
@@ -328,8 +338,140 @@ router.delete('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Document not found' });
         }
 
+        // Audit trail
+        auditService.log('document', req.params.id, 'DELETE', req.user?.userId || null, {});
+
         res.json({ message: 'Document deleted successfully' });
     } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Upload new version of an existing document
+router.post('/upload-version/:docId', authenticateToken, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const parentDocId = req.params.docId;
+
+        // Find the original document
+        const { rows: existing } = await pool.query(
+            'SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL',
+            [parentDocId]
+        );
+
+        if (existing.length === 0) {
+            return res.status(404).json({ error: 'Original document not found' });
+        }
+
+        const parentDoc = existing[0];
+        // Find the true root parent (for chains of versions)
+        const rootParentId = parentDoc.parent_document_id || parentDoc.id;
+
+        // Mark ALL previous versions in this chain as not latest
+        await pool.query(
+            `UPDATE documents SET is_latest = false 
+             WHERE (id = $1 OR parent_document_id = $1 OR id = $2 OR parent_document_id = $2)
+             AND deleted_at IS NULL`,
+            [rootParentId, parentDocId]
+        );
+
+        // Calculate file hash
+        const fileBuffer = await fs.readFile(req.file.path);
+        const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+        // Get next version number
+        const { rows: versionRows } = await pool.query(
+            `SELECT MAX(version) as max_version FROM documents 
+             WHERE (id = $1 OR parent_document_id = $1) AND deleted_at IS NULL`,
+            [rootParentId]
+        );
+        const newVersion = (versionRows[0]?.max_version || parentDoc.version || 1) + 1;
+
+        // Insert new version
+        const { rows } = await pool.query(
+            `INSERT INTO documents 
+             (shipment_id, booking_id, document_type, document_number, version,
+              file_path, file_name, file_size_bytes, file_type, file_hash,
+              issue_date, expiry_date, issuer, status, parent_document_id, is_latest, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'UPLOADED', $14, true, $15)
+             RETURNING *`,
+            [
+                parentDoc.shipment_id,
+                parentDoc.booking_id,
+                parentDoc.document_type,
+                parentDoc.document_number,
+                newVersion,
+                req.file.path,
+                req.file.originalname,
+                req.file.size,
+                req.file.mimetype,
+                hash,
+                parentDoc.issue_date,
+                parentDoc.expiry_date,
+                parentDoc.issuer,
+                rootParentId,
+                req.user?.userId || null,
+            ]
+        );
+
+        // Audit trail
+        auditService.log('document', rows[0].id, 'VERSION_UPLOAD', req.user?.userId || null, {
+            file_name: req.file.originalname,
+            version: newVersion,
+            parent_document_id: rootParentId,
+            document_type: parentDoc.document_type,
+        });
+
+        console.log(`📄 New version v${newVersion} uploaded for document ${parentDocId}`);
+
+        res.status(201).json({
+            success: true,
+            document: rows[0],
+            message: `Version ${newVersion} uploaded successfully`,
+        });
+    } catch (error) {
+        console.error('Version upload error:', error);
+        res.status(500).json({ error: error.message || 'Version upload failed' });
+    }
+});
+
+// Get version history for a document
+router.get('/:id/versions', authenticateToken, async (req, res) => {
+    try {
+        const docId = req.params.id;
+
+        // Find the root document (might be the doc itself or its parent)
+        const { rows: doc } = await pool.query(
+            'SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL',
+            [docId]
+        );
+
+        if (doc.length === 0) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+
+        const rootId = doc[0].parent_document_id || doc[0].id;
+
+        // Get all versions in this chain
+        const { rows: versions } = await pool.query(
+            `SELECT d.*, u.full_name as uploaded_by_name
+             FROM documents d
+             LEFT JOIN users u ON d.created_by = u.id
+             WHERE (d.id = $1 OR d.parent_document_id = $1) AND d.deleted_at IS NULL
+             ORDER BY d.version DESC`,
+            [rootId]
+        );
+
+        res.json({
+            versions,
+            total: versions.length,
+            currentVersion: versions.find(v => v.is_latest)?.version || 1,
+        });
+    } catch (error) {
+        console.error('Error fetching versions:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

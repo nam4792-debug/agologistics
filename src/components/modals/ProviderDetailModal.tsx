@@ -9,10 +9,11 @@ import {
     Clock,
     Loader2,
     AlertTriangle,
+    CreditCard,
 } from 'lucide-react';
 import { Card, CardContent, Button, Badge } from '@/components/ui';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface ProviderDetailModalProps {
     isOpen: boolean;
@@ -50,6 +51,7 @@ interface Provider {
     email: string;
     phone: string;
     status: string;
+    credit_limit_monthly?: number;
 }
 
 export function ProviderDetailModal({ isOpen, onClose, providerId }: ProviderDetailModalProps) {
@@ -69,8 +71,7 @@ export function ProviderDetailModal({ isOpen, onClose, providerId }: ProviderDet
 
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/providers/${providerId}/debt`);
-            const data = await res.json();
+            const data = await fetchApi(`/api/providers/${providerId}/debt`);
 
             if (data.success) {
                 setProvider(data.provider);
@@ -172,6 +173,30 @@ export function ProviderDetailModal({ isOpen, onClose, providerId }: ProviderDet
                                         </p>
                                         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
                                             All time
+                                        </p>
+                                    </CardContent>
+                                </Card>
+
+                                <Card className={cn(
+                                    'border-purple-500/30 bg-purple-500/5',
+                                    provider?.credit_limit_monthly && (debt?.totalDebt || 0) > provider.credit_limit_monthly
+                                        ? 'border-red-500/50 bg-red-500/10'
+                                        : ''
+                                )}>
+                                    <CardContent className="p-4">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <CreditCard className="w-4 h-4 text-purple-400" />
+                                            <span className="text-sm text-purple-400">Credit Limit</span>
+                                        </div>
+                                        <p className="text-2xl font-bold text-purple-400">
+                                            {provider?.credit_limit_monthly
+                                                ? formatCurrency(provider.credit_limit_monthly)
+                                                : 'No limit'}
+                                        </p>
+                                        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                                            {provider?.credit_limit_monthly && (debt?.totalDebt || 0) > provider.credit_limit_monthly
+                                                ? '⚠️ Over limit!'
+                                                : 'Monthly limit'}
                                         </p>
                                     </CardContent>
                                 </Card>

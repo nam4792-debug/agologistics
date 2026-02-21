@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Shield, Monitor, Plus, Trash2 } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
 import { Button, Input } from '@/components/ui';
 import { getCachedDeviceInfo } from '@/lib/deviceId';
+import { fetchApi } from '@/lib/api';
 
 interface WhitelistEntry {
     id: string;
@@ -13,10 +13,9 @@ interface WhitelistEntry {
     notes?: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
+
 
 export function AdminWhitelist() {
-    const { token } = useAuthStore();
     const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddForm, setShowAddForm] = useState(false);
@@ -24,15 +23,7 @@ export function AdminWhitelist() {
 
     const fetchWhitelist = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/admin/whitelist`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-
-            if (!response.ok) throw new Error('Failed to fetch whitelist');
-
-            const data = await response.json();
+            const data = await fetchApi('/api/admin/whitelist');
             setWhitelist(data.whitelist);
         } catch (err) {
             console.error(err);
@@ -49,20 +40,15 @@ export function AdminWhitelist() {
         try {
             const deviceInfo = await getCachedDeviceInfo();
 
-            const response = await fetch(`${API_URL}/api/admin/whitelist`, {
+            await fetchApi('/api/admin/whitelist', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     deviceId: deviceInfo.deviceId,
                     deviceName: deviceInfo.deviceName,
                     notes: 'Added via admin panel',
                 }),
             });
-
-            if (!response.ok) throw new Error('Failed to add device');
 
             alert('Current device added to whitelist');
             setShowAddForm(false);
@@ -79,16 +65,11 @@ export function AdminWhitelist() {
         }
 
         try {
-            const response = await fetch(`${API_URL}/api/admin/whitelist`, {
+            await fetchApi('/api/admin/whitelist', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newDevice),
             });
-
-            if (!response.ok) throw new Error('Failed to add device');
 
             alert('Device added to whitelist');
             setNewDevice({ deviceId: '', deviceName: '', notes: '' });
@@ -103,17 +84,9 @@ export function AdminWhitelist() {
         if (!confirm('Revoke admin access for this device?')) return;
 
         try {
-            const response = await fetch(`${API_URL}/api/admin/whitelist/${deviceId}`, {
+            await fetchApi(`/api/admin/whitelist/${deviceId}`, {
                 method: 'DELETE',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
             });
-
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Failed to revoke access');
-            }
 
             alert('Admin access revoked');
             await fetchWhitelist();

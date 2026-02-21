@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { Breadcrumbs } from './Breadcrumbs';
 import { cn } from '@/lib/utils';
 
 export function MainLayout() {
@@ -21,6 +22,7 @@ export function MainLayout() {
                 )}
             >
                 <div className="p-6">
+                    <Breadcrumbs />
                     <Outlet />
                 </div>
             </main>

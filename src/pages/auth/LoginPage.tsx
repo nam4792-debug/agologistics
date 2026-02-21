@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Ship, Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -22,105 +22,106 @@ export function LoginPage() {
             if (result.success) {
                 navigate('/');
             } else {
-                setError(result.error || 'Email hoặc mật khẩu không đúng');
+                setError(result.error || 'Invalid email or password');
             }
         } catch (err) {
-            setError('Không thể kết nối server');
+            setError('Cannot connect to server');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-[hsl(var(--background))] flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-emerald-800 via-emerald-900 to-emerald-950 flex items-center justify-center p-4">
             {/* Background decoration */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl" />
-                <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
+                <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-500/20 rounded-full blur-3xl" />
+                <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-green-400/15 rounded-full blur-3xl" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-600/10 rounded-full blur-3xl" />
             </div>
 
             <div className="relative w-full max-w-md">
                 {/* Logo */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 mb-4">
-                        <Ship className="w-8 h-8 text-white" />
+                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4 bg-white/10 backdrop-blur-sm border border-white/10 shadow-lg">
+                        <img src="/logo-agofruit.png" alt="Ago Fruit" className="w-16 h-16 object-contain" />
                     </div>
-                    <h1 className="text-3xl font-bold text-[hsl(var(--foreground))]">LogisPro</h1>
-                    <p className="text-[hsl(var(--muted-foreground))] mt-2">Export Logistics Management</p>
+                    <h1 className="text-2xl font-bold text-white">Ago Import Export</h1>
+                    <p className="text-emerald-200/70 mt-1 text-sm">Co.,Ltd — Fruit Export Management</p>
                 </div>
 
                 {/* Login Form */}
-                <div className="bg-[hsl(var(--card))] rounded-2xl border border-[hsl(var(--border))] p-8 shadow-2xl">
-                    <h2 className="text-xl font-semibold text-[hsl(var(--foreground))] mb-6 text-center">
-                        Đăng nhập
+                <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/15 p-8 shadow-2xl">
+                    <h2 className="text-xl font-semibold text-white mb-6 text-center">
+                        Sign In
                     </h2>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         {error && (
-                            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400">
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/15 border border-red-400/30 text-red-200">
                                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                                 <span className="text-sm">{error}</span>
                             </div>
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-2">
+                            <label className="block text-sm font-medium text-emerald-100 mb-2">
                                 Email
                             </label>
-                            <Input
+                            <input
                                 type="email"
                                 placeholder="admin@logispro.vn"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
-                                className="w-full"
+                                className="w-full h-10 px-3 py-2 rounded-lg border border-white/20 bg-white/10 text-white placeholder:text-emerald-200/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400/50 transition-all text-sm backdrop-blur-sm"
                             />
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-2">
-                                Mật khẩu
+                            <label className="block text-sm font-medium text-emerald-100 mb-2">
+                                Password
                             </label>
-                            <Input
+                            <input
                                 type="password"
                                 placeholder="••••••••"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
-                                className="w-full"
+                                className="w-full h-10 px-3 py-2 rounded-lg border border-white/20 bg-white/10 text-white placeholder:text-emerald-200/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 focus:border-emerald-400/50 transition-all text-sm backdrop-blur-sm"
                             />
                         </div>
 
                         <Button
                             type="submit"
                             disabled={loading}
-                            className="w-full py-3 mt-6"
+                            className="w-full py-3 mt-6 from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 shadow-lg"
                         >
                             {loading ? (
                                 <>
                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Đang đăng nhập...
+                                    Signing in...
                                 </>
                             ) : (
-                                'Đăng nhập'
+                                'Sign In'
                             )}
                         </Button>
                     </form>
 
                     {/* Demo accounts */}
-                    <div className="mt-6 pt-6 border-t border-[hsl(var(--border))]">
-                        <p className="text-xs text-[hsl(var(--muted-foreground))] text-center mb-3">
-                            Tài khoản demo:
+                    <div className="mt-6 pt-6 border-t border-white/10">
+                        <p className="text-xs text-emerald-200/50 text-center mb-3">
+                            Demo account:
                         </p>
-                        <div className="space-y-1 text-xs text-center text-[hsl(var(--muted-foreground))]">
-                            <p><code className="bg-[hsl(var(--secondary))] px-1 rounded">admin@logispro.vn</code> / <code className="bg-[hsl(var(--secondary))] px-1 rounded">admin123</code></p>
+                        <div className="space-y-1 text-xs text-center text-emerald-200/60">
+                            <p><code className="bg-white/10 px-1.5 py-0.5 rounded text-emerald-100">admin@logispro.vn</code> / <code className="bg-white/10 px-1.5 py-0.5 rounded text-emerald-100">admin123</code></p>
                         </div>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-xs text-[hsl(var(--muted-foreground))] mt-6">
-                    © 2026 LogisPro. All rights reserved.
+                <p className="text-center text-xs text-emerald-300/40 mt-6">
+                    © 2026 Ago Import Export Co.,Ltd. All rights reserved.
                 </p>
             </div>
         </div>

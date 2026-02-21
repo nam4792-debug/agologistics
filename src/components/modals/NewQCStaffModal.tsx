@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, UserCheck, Loader2, User, Mail, Phone, Briefcase } from 'lucide-react';
 import { Button, Input, Select } from '@/components/ui';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface NewQCStaffModalProps {
@@ -46,17 +46,11 @@ export function NewQCStaffModal({ isOpen, onClose, onSuccess }: NewQCStaffModalP
         setError(null);
 
         try {
-            const response = await fetch(`${API_URL}/api/qc-staff`, {
+            await fetchApi('/api/qc-staff', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Failed to create QC staff');
-            }
 
             toast.success(`QC Staff "${formData.full_name}" added!`);
             onSuccess?.();

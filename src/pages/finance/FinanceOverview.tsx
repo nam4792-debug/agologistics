@@ -2,39 +2,40 @@ import { useState, useEffect } from 'react';
 import {
     DollarSign,
     FileText,
-    Upload,
     Clock,
     CheckCircle,
     Loader2,
     RefreshCw,
+    AlertTriangle,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge } from '@/components/ui';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
-import { API_URL } from '@/lib/api';
-
-interface BookingData {
-    id: string;
-    booking_number: string;
-    status: string;
-    freight_rate?: number;
-    origin_port?: string;
-    destination_port?: string;
-    etd?: string;
-}
+import { fetchApi } from '@/lib/api';
+import { useNavigate } from 'react-router-dom';
 
 interface Invoice {
     id: string;
-    number: string;
-    bookingNumber: string;
-    amount: number;
-    quotedAmount: number;
+    invoice_number: string;
+    shipment_id?: string;
+    shipment_number?: string;
+    vendor_name?: string;
+    amount_usd: number;
     status: string;
-    dueDate: string;
-    discrepancy?: { difference: number; percentage: number } | null;
+    due_date?: string;
+    created_at: string;
+}
+
+interface InvoiceSummary {
+    totalAmount: number;
+    pendingAmount: number;
+    paidAmount: number;
+    overdueCount: number;
 }
 
 export function FinanceOverview() {
-    const [bookings, setBookings] = useState<BookingData[]>([]);
+    const navigate = useNavigate();
+    const [invoices, setInvoices] = useState<Invoice[]>([]);
+    const [summary, setSummary] = useState<InvoiceSummary>({ totalAmount: 0, pendingAmount: 0, paidAmount: 0, overdueCount: 0 });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -44,33 +45,34 @@ export function FinanceOverview() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch confirmed bookings
-            const res = await fetch(`${API_URL}/api/bookings?status=CONFIRMED`);
-            const data = await res.json();
-            setBookings(data.bookings || []);
+            // Fetch REAL invoices from database
+            const data = await fetchApi('/api/invoices');
+            if (data.invoices) {
+                setInvoices(data.invoices);
+                setSummary(data.summary || { totalAmount: 0, pendingAmount: 0, paidAmount: 0, overdueCount: 0 });
+            }
         } catch (error) {
             console.error('Failed to fetch finance data:', error);
-            setBookings([]);
+            setInvoices([]);
         } finally {
             setLoading(false);
         }
     };
 
-    // Calculate totals from confirmed bookings
-    const totalRevenue = bookings.reduce((sum, b) => sum + (b.freight_rate || 0), 0);
-    const confirmedBookingsCount = bookings.length;
+    const isOverdue = (inv: Invoice) =>
+        inv.status === 'PENDING' && inv.due_date && new Date(inv.due_date) < new Date();
 
-    // Generate invoices from confirmed bookings
-    const invoices: Invoice[] = bookings.slice(0, 5).map(booking => ({
-        id: booking.id,
-        number: `INV-${booking.booking_number}`,
-        bookingNumber: booking.booking_number,
-        amount: booking.freight_rate || 0,
-        quotedAmount: booking.freight_rate || 0,
-        status: 'PENDING',
-        dueDate: booking.etd || new Date().toISOString(),
-        discrepancy: null,
-    }));
+    const getStatusConfig = (inv: Invoice) => {
+        const overdue = isOverdue(inv);
+        if (overdue || inv.status === 'OVERDUE') {
+            return { label: 'Overdue', color: 'text-red-400 bg-red-500/20', icon: <AlertTriangle className="w-4 h-4 text-red-400" /> };
+        }
+        switch (inv.status) {
+            case 'PAID': return { label: 'Paid', color: 'text-green-400 bg-green-500/20', icon: <CheckCircle className="w-4 h-4 text-green-400" /> };
+            case 'PENDING': return { label: 'Pending', color: 'text-yellow-400 bg-yellow-500/20', icon: <Clock className="w-4 h-4 text-yellow-400" /> };
+            default: return { label: inv.status, color: 'text-gray-400 bg-gray-500/20', icon: <FileText className="w-4 h-4 text-gray-400" /> };
+        }
+    };
 
     if (loading) {
         return (
@@ -90,7 +92,7 @@ export function FinanceOverview() {
                         Finance & Invoices
                     </h1>
                     <p className="text-[hsl(var(--muted-foreground))] mt-1">
-                        Manage costs, invoices, and payment tracking (Confirmed Bookings Only)
+                        Track invoices, payments and costs
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -98,9 +100,9 @@ export function FinanceOverview() {
                         <RefreshCw className="w-4 h-4 mr-2" />
                         Refresh
                     </Button>
-                    <Button>
-                        <Upload className="w-4 h-4 mr-2" />
-                        Upload Invoice
+                    <Button onClick={() => navigate('/invoices')}>
+                        <FileText className="w-4 h-4 mr-2" />
+                        Manage Invoices
                     </Button>
                 </div>
             </div>
@@ -111,25 +113,11 @@ export function FinanceOverview() {
                     <CardContent className="p-5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Total Freight Cost</p>
-                                <p className="text-2xl font-bold text-[hsl(var(--foreground))]">{formatCurrency(totalRevenue)}</p>
+                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Total Amount</p>
+                                <p className="text-2xl font-bold text-[hsl(var(--foreground))]">{formatCurrency(summary.totalAmount)}</p>
                             </div>
-                            <div className="w-12 h-12 rounded-xl gradient-primary flex items-center justify-center">
-                                <DollarSign className="w-6 h-6 text-white" />
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-green-500/30">
-                    <CardContent className="p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-green-400">Confirmed Bookings</p>
-                                <p className="text-2xl font-bold text-green-400">{confirmedBookingsCount}</p>
-                            </div>
-                            <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
-                                <CheckCircle className="w-6 h-6 text-green-400" />
+                            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                                <DollarSign className="w-6 h-6 text-blue-400" />
                             </div>
                         </div>
                     </CardContent>
@@ -139,8 +127,8 @@ export function FinanceOverview() {
                     <CardContent className="p-5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-yellow-400">Pending Invoices</p>
-                                <p className="text-2xl font-bold text-yellow-400">{invoices.filter(i => i.status === 'PENDING').length}</p>
+                                <p className="text-sm text-yellow-400">Pending</p>
+                                <p className="text-2xl font-bold text-yellow-400">{formatCurrency(summary.pendingAmount)}</p>
                             </div>
                             <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
                                 <Clock className="w-6 h-6 text-yellow-400" />
@@ -149,148 +137,140 @@ export function FinanceOverview() {
                     </CardContent>
                 </Card>
 
-                <Card className="border-blue-500/30">
+                <Card className="border-green-500/30">
                     <CardContent className="p-5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-blue-400">Avg per Booking</p>
-                                <p className="text-2xl font-bold text-blue-400">
-                                    {confirmedBookingsCount > 0 ? formatCurrency(totalRevenue / confirmedBookingsCount) : '$0'}
-                                </p>
+                                <p className="text-sm text-green-400">Paid</p>
+                                <p className="text-2xl font-bold text-green-400">{formatCurrency(summary.paidAmount)}</p>
                             </div>
-                            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                                <FileText className="w-6 h-6 text-blue-400" />
+                            <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
+                                <CheckCircle className="w-6 h-6 text-green-400" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="border-red-500/30">
+                    <CardContent className="p-5">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-red-400">Overdue</p>
+                                <p className="text-2xl font-bold text-red-400">{summary.overdueCount}</p>
+                            </div>
+                            <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center">
+                                <AlertTriangle className="w-6 h-6 text-red-400" />
                             </div>
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Invoices from Confirmed Bookings */}
+            {/* Real Invoices from Database */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle className="flex items-center gap-2">
                         <FileText className="w-5 h-5" />
-                        Invoices from Confirmed Bookings
+                        Invoices
                     </CardTitle>
-                    <Button variant="outline" size="sm">View All</Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate('/invoices')}>
+                        View All →
+                    </Button>
                 </CardHeader>
                 <CardContent>
                     {invoices.length > 0 ? (
                         <div className="space-y-4">
-                            {invoices.map((invoice) => (
-                                <div
-                                    key={invoice.id}
-                                    className={cn(
-                                        'p-4 rounded-lg border transition-all hover:bg-[hsl(var(--secondary))]',
-                                        invoice.status === 'PENDING' && 'border-yellow-500/30'
-                                    )}
-                                >
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-yellow-500/20">
-                                                <Clock className="w-6 h-6 text-yellow-400" />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-[hsl(var(--foreground))]">{invoice.number}</p>
-                                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                                    Booking: {invoice.bookingNumber}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-6">
-                                            <div className="text-right">
-                                                <p className="font-semibold text-[hsl(var(--foreground))]">{formatCurrency(invoice.amount)}</p>
+                            {invoices.slice(0, 8).map((invoice) => {
+                                const config = getStatusConfig(invoice);
+                                return (
+                                    <div
+                                        key={invoice.id}
+                                        className={cn(
+                                            'p-4 rounded-lg border transition-all hover:bg-[hsl(var(--secondary))] cursor-pointer',
+                                            (isOverdue(invoice) || invoice.status === 'OVERDUE') && 'border-red-500/30'
+                                        )}
+                                        onClick={() => invoice.shipment_id && navigate(`/shipments/${invoice.shipment_id}`)}
+                                    >
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className={cn('w-12 h-12 rounded-lg flex items-center justify-center', config.color.split(' ')[1])}>
+                                                    {config.icon}
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-[hsl(var(--foreground))]">{invoice.invoice_number || '—'}</p>
+                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                                        {invoice.vendor_name || 'No vendor'} • {invoice.shipment_number || 'No shipment'}
+                                                    </p>
+                                                </div>
                                             </div>
 
-                                            <div className="text-right">
-                                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Due</p>
-                                                <p className="text-sm text-[hsl(var(--foreground))]">{formatDate(invoice.dueDate)}</p>
+                                            <div className="flex items-center gap-6">
+                                                <div className="text-right">
+                                                    <p className="font-semibold text-[hsl(var(--foreground))]">{formatCurrency(parseFloat(String(invoice.amount_usd)) || 0)}</p>
+                                                </div>
+
+                                                <div className="text-right">
+                                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Due</p>
+                                                    <p className="text-sm text-[hsl(var(--foreground))]">{invoice.due_date ? formatDate(invoice.due_date) : '—'}</p>
+                                                </div>
+
+                                                <Badge className={cn('flex items-center gap-1', config.color)}>
+                                                    {config.label}
+                                                </Badge>
                                             </div>
-
-                                            <Badge variant="secondary">
-                                                {invoice.status}
-                                            </Badge>
-
-                                            <Button size="sm">Process</Button>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : (
                         <div className="text-center py-12">
                             <FileText className="w-12 h-12 mx-auto text-[hsl(var(--muted-foreground))] mb-4" />
                             <h3 className="text-lg font-medium text-[hsl(var(--foreground))]">No invoices yet</h3>
                             <p className="text-[hsl(var(--muted-foreground))] mt-1">
-                                Confirm bookings to generate invoices
+                                Create invoices from the Invoices page
                             </p>
+                            <Button className="mt-4" onClick={() => navigate('/invoices')}>
+                                Go to Invoices
+                            </Button>
                         </div>
                     )}
                 </CardContent>
             </Card>
 
-            {/* Booking Revenue Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Freight Costs by Booking</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {bookings.length > 0 ? (
-                            <div className="space-y-3">
-                                {bookings.slice(0, 5).map((booking) => (
-                                    <div key={booking.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--secondary))]">
-                                        <div>
-                                            <p className="font-medium text-[hsl(var(--foreground))]">{booking.booking_number}</p>
-                                            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                                                {booking.origin_port} → {booking.destination_port}
-                                            </p>
-                                        </div>
-                                        <p className="font-semibold text-green-400">{formatCurrency(booking.freight_rate || 0)}</p>
+            {/* Payment Status Overview */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Payment Status Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        {[
+                            { status: 'Pending', count: invoices.filter(i => i.status === 'PENDING' && !isOverdue(i)).length, color: 'bg-yellow-500' },
+                            { status: 'Overdue', count: invoices.filter(i => i.status === 'OVERDUE' || isOverdue(i)).length, color: 'bg-red-500' },
+                            { status: 'Paid', count: invoices.filter(i => i.status === 'PAID').length, color: 'bg-green-500' },
+                        ].map((item) => (
+                            <div key={item.status} className="flex items-center gap-4">
+                                <div className={cn('w-3 h-3 rounded-full', item.color)} />
+                                <div className="flex-1">
+                                    <div className="flex justify-between mb-1">
+                                        <span className="text-sm text-[hsl(var(--foreground))]">{item.status}</span>
+                                        <span className="text-sm font-medium text-[hsl(var(--foreground))]">
+                                            {item.count} invoice{item.count !== 1 ? 's' : ''}
+                                        </span>
                                     </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-center text-[hsl(var(--muted-foreground))] py-8">No confirmed bookings</p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Payment Status Overview</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {[
-                                { status: 'Pending', count: invoices.filter(i => i.status === 'PENDING').length, color: 'bg-yellow-500' },
-                                { status: 'Validated', count: invoices.filter(i => i.status === 'VALIDATED').length, color: 'bg-green-500' },
-                                { status: 'Paid', count: invoices.filter(i => i.status === 'PAID').length, color: 'bg-blue-500' },
-                            ].map((item) => (
-                                <div key={item.status} className="flex items-center gap-4">
-                                    <div className={cn('w-3 h-3 rounded-full', item.color)} />
-                                    <div className="flex-1">
-                                        <div className="flex justify-between mb-1">
-                                            <span className="text-sm text-[hsl(var(--foreground))]">{item.status}</span>
-                                            <span className="text-sm font-medium text-[hsl(var(--foreground))]">
-                                                {item.count} invoices
-                                            </span>
-                                        </div>
-                                        <div className="h-2 bg-[hsl(var(--secondary))] rounded-full overflow-hidden">
-                                            <div
-                                                className={cn('h-full rounded-full', item.color)}
-                                                style={{ width: `${invoices.length > 0 ? (item.count / invoices.length) * 100 : 0}%` }}
-                                            />
-                                        </div>
+                                    <div className="h-2 bg-[hsl(var(--secondary))] rounded-full overflow-hidden">
+                                        <div
+                                            className={cn('h-full rounded-full', item.color)}
+                                            style={{ width: `${invoices.length > 0 ? (item.count / invoices.length) * 100 : 0}%` }}
+                                        />
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
+                            </div>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

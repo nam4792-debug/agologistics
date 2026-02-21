@@ -37,9 +37,26 @@ export const useAuthStore = create<AuthState>()(
 
             login: async (email: string, password: string) => {
                 try {
-                    // Get device info
-                    const { getDeviceInfo } = await import('../lib/deviceId');
-                    const deviceInfo = await getDeviceInfo();
+                    // Get device info with timeout (3s fallback)
+                    let deviceInfo;
+                    try {
+                        const { getDeviceInfo } = await import('../lib/deviceId');
+                        const deviceInfoPromise = getDeviceInfo();
+                        const timeoutPromise = new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error('Device info timeout')), 3000)
+                        );
+                        deviceInfo = await Promise.race([deviceInfoPromise, timeoutPromise]) as { deviceId: string; deviceName: string; osInfo: string };
+                    } catch {
+                        deviceInfo = {
+                            deviceId: 'fallback-device-id',
+                            deviceName: 'Unknown',
+                            osInfo: navigator.userAgent,
+                        };
+                    }
+
+                    // Login with 10-second timeout
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
                     const response = await fetch(`${API_URL}/api/auth/login`, {
                         method: 'POST',
@@ -51,7 +68,10 @@ export const useAuthStore = create<AuthState>()(
                             deviceName: deviceInfo.deviceName,
                             osInfo: deviceInfo.osInfo,
                         }),
+                        signal: controller.signal,
                     });
+
+                    clearTimeout(timeoutId);
 
                     const data = await response.json();
 
@@ -82,6 +102,12 @@ export const useAuthStore = create<AuthState>()(
                     return { success: false, error: 'Invalid response from server' };
                 } catch (error) {
                     console.error('Login error:', error);
+                    if (error instanceof DOMException && error.name === 'AbortError') {
+                        return {
+                            success: false,
+                            error: 'Cannot connect to server. Please check your network connection and try again.',
+                        };
+                    }
                     return {
                         success: false,
                         error: error instanceof Error ? error.message : 'Network error',

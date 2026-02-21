@@ -3,18 +3,18 @@ import { cn } from '@/lib/utils';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 const buttonVariants = cva(
-    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))] disabled:pointer-events-none disabled:opacity-50',
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]/30 focus-visible:ring-offset-1 focus-visible:ring-offset-[hsl(var(--background))] disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]',
     {
         variants: {
             variant: {
-                default: 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 focus-visible:ring-[hsl(var(--primary))]',
-                destructive: 'bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] hover:bg-[hsl(var(--destructive))]/90 focus-visible:ring-[hsl(var(--destructive))]',
-                outline: 'border border-[hsl(var(--border))] bg-transparent hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]',
-                secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:bg-[hsl(var(--secondary))]/80',
+                default: 'bg-gradient-to-r from-emerald-600 to-green-600 text-white shadow-[var(--shadow-sm)] hover:from-emerald-500 hover:to-green-500 hover:shadow-[var(--shadow-md)]',
+                destructive: 'bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] shadow-[var(--shadow-sm)] hover:bg-[hsl(var(--destructive))]/90 hover:shadow-[var(--shadow-md)]',
+                outline: 'border border-[hsl(var(--border))] bg-transparent hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] hover:shadow-[var(--shadow-xs)] hover:border-[hsl(var(--border))]/80',
+                secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:bg-[hsl(var(--secondary))]/80 hover:shadow-[var(--shadow-xs)]',
                 ghost: 'hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))]',
                 link: 'text-[hsl(var(--primary))] underline-offset-4 hover:underline',
-                success: 'bg-[hsl(var(--success))] text-white hover:bg-[hsl(var(--success))]/90',
-                warning: 'bg-[hsl(var(--warning))] text-black hover:bg-[hsl(var(--warning))]/90',
+                success: 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-[var(--shadow-sm)] hover:from-green-500 hover:to-emerald-500 hover:shadow-[var(--shadow-md)]',
+                warning: 'bg-[hsl(var(--warning))] text-black shadow-[var(--shadow-sm)] hover:bg-[hsl(var(--warning))]/90 hover:shadow-[var(--shadow-md)]',
             },
             size: {
                 default: 'h-10 px-4 py-2',

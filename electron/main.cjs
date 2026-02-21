@@ -242,7 +242,12 @@ app.on('window-all-closed', () => {
 app.on('web-contents-created', (event, contents) => {
     contents.on('will-navigate', (event, navigationUrl) => {
         const parsedUrl = new URL(navigationUrl);
-        if (parsedUrl.origin !== 'http://localhost:5173' && !navigationUrl.startsWith('file://')) {
+        const allowedOrigins = [
+            'http://localhost:5173',
+            'http://localhost:3001',
+            'https://logispro-api.onrender.com',
+        ];
+        if (!allowedOrigins.includes(parsedUrl.origin) && !navigationUrl.startsWith('file://')) {
             event.preventDefault();
         }
     });

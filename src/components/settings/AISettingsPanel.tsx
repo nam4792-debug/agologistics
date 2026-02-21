@@ -10,42 +10,56 @@ import {
     TestTube,
     Brain,
     ExternalLink,
+    GraduationCap,
+    RotateCcw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface AISettings {
-    provider: 'openai' | 'anthropic' | 'custom';
+    provider: 'anthropic' | 'openai' | 'gemini' | 'custom';
     apiKey: string;
     endpoint: string;
     model: string;
     maxTokens: number;
+    customSystemPrompt: string;
 }
 
 const defaultSettings: AISettings = {
-    provider: 'openai',
+    provider: 'anthropic',
     apiKey: '',
     endpoint: '',
-    model: 'gpt-4-turbo',
+    model: 'claude-sonnet-4-20250514',
     maxTokens: 4096,
+    customSystemPrompt: '',
 };
 
 const PROVIDERS = {
-    openai: {
-        name: 'OpenAI',
-        models: ['gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-        defaultEndpoint: 'https://api.openai.com/v1',
-        docUrl: 'https://platform.openai.com/api-keys',
-        color: 'from-green-500 to-emerald-500',
-    },
     anthropic: {
         name: 'Anthropic Claude',
-        models: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
+        models: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
         defaultEndpoint: 'https://api.anthropic.com',
         docUrl: 'https://console.anthropic.com/account/keys',
         color: 'from-orange-500 to-amber-500',
+        description: 'Recommended — Best for document analysis',
+    },
+    openai: {
+        name: 'OpenAI GPT',
+        models: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
+        defaultEndpoint: 'https://api.openai.com/v1',
+        docUrl: 'https://platform.openai.com/api-keys',
+        color: 'from-green-500 to-emerald-500',
+        description: 'Popular general-purpose AI',
+    },
+    gemini: {
+        name: 'Google Gemini',
+        models: ['gemini-2.0-flash', 'gemini-2.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+        defaultEndpoint: 'https://generativelanguage.googleapis.com',
+        docUrl: 'https://aistudio.google.com/app/apikey',
+        color: 'from-blue-500 to-cyan-500',
+        description: 'Google AI with multimodal capabilities',
     },
     custom: {
         name: 'Custom API',
@@ -53,8 +67,19 @@ const PROVIDERS = {
         defaultEndpoint: '',
         docUrl: '',
         color: 'from-purple-500 to-pink-500',
+        description: 'Connect your own AI endpoint',
     },
 };
+
+const DEFAULT_SYSTEM_PROMPT = `You are a Senior Import-Export Director with over 30 years of experience in logistics and Vietnamese fruit exports. You have deep expertise in:
+- Import/export procedures, customs clearance, and incoterms
+- Cold chain supply management for fresh fruits
+- Phytosanitary regulations, certificates of origin, and fumigation
+- Forwarder and shipping line management, freight rate negotiation
+- Operational risk analysis and deadline management
+- Import/export finance: LC, TT, and invoice reconciliation
+
+Provide detailed, specific answers based on actual system data. Recommend actionable steps when appropriate.`;
 
 export function AISettingsPanel() {
     const [settings, setSettings] = useState<AISettings>(defaultSettings);
@@ -62,18 +87,39 @@ export function AISettingsPanel() {
     const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
     const [saving, setSaving] = useState(false);
     const [showKey, setShowKey] = useState(false);
+    const [showTraining, setShowTraining] = useState(false);
 
     useEffect(() => {
-        // Load saved settings from localStorage
+        loadSettings();
+    }, []);
+
+    const loadSettings = async () => {
+        try {
+            // Load from backend first
+            const data = await fetchApi('/api/settings/ai');
+            if (data.settings) {
+                setSettings(prev => ({
+                    ...prev,
+                    provider: data.settings.provider || prev.provider,
+                    apiKey: data.settings.apiKey || prev.apiKey,
+                    endpoint: data.settings.endpoint || prev.endpoint,
+                    model: data.settings.model || prev.model,
+                    maxTokens: data.settings.maxTokens || prev.maxTokens,
+                    customSystemPrompt: data.settings.customSystemPrompt || prev.customSystemPrompt,
+                }));
+                return;
+            }
+        } catch {
+            // Fallback to localStorage
+        }
+
         const saved = localStorage.getItem('ai_settings');
         if (saved) {
             try {
-                setSettings(JSON.parse(saved));
-            } catch (e) {
-                console.error('Failed to parse AI settings');
-            }
+                setSettings(prev => ({ ...prev, ...JSON.parse(saved) }));
+            } catch { /* ignore */ }
         }
-    }, []);
+    };
 
     const handleProviderChange = (provider: AISettings['provider']) => {
         const providerConfig = PROVIDERS[provider];
@@ -96,23 +142,16 @@ export function AISettingsPanel() {
         setTestResult(null);
 
         try {
-            const response = await fetch(`${API_URL}/api/ai/test`, {
+            await fetchApi('/api/ai/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings),
             });
-
-            if (response.ok) {
-                setTestResult('success');
-                toast.success('Connection successful!');
-            } else {
-                setTestResult('error');
-                toast.error('Connection failed. Check your API key.');
-            }
-        } catch (error) {
-            // For demo - simulate success
             setTestResult('success');
-            toast.success('Connection test passed (Demo mode)');
+            toast.success('Connection successful!');
+        } catch (error) {
+            setTestResult('error');
+            toast.error('Connection failed. Check your API key and try again.');
         } finally {
             setTesting(false);
         }
@@ -122,22 +161,20 @@ export function AISettingsPanel() {
         setSaving(true);
 
         try {
-            // Save to localStorage
-            localStorage.setItem('ai_settings', JSON.stringify(settings));
-
-            // Also save to backend
-            await fetch(`${API_URL}/api/settings/ai`, {
+            // Save to backend
+            await fetchApi('/api/settings/ai', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings),
             });
 
-
             toast.success('AI settings saved successfully!');
-        } catch (error) {
-            // Still save to localStorage even if backend fails
+
+            // Also save to localStorage as backup
             localStorage.setItem('ai_settings', JSON.stringify(settings));
-            toast.success('Settings saved locally');
+        } catch {
+            localStorage.setItem('ai_settings', JSON.stringify(settings));
+            toast.success('Settings saved locally (backend unavailable)');
         } finally {
             setSaving(false);
         }
@@ -154,7 +191,7 @@ export function AISettingsPanel() {
                     AI Configuration
                 </h2>
                 <p className="text-[hsl(var(--muted-foreground))] mt-1">
-                    Configure your AI provider for document analysis and risk assessment
+                    Configure your AI provider for document analysis, risk assessment, and assistant chat
                 </p>
             </div>
 
@@ -167,7 +204,7 @@ export function AISettingsPanel() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {Object.entries(PROVIDERS).map(([key, provider]) => (
                             <button
                                 key={key}
@@ -187,9 +224,7 @@ export function AISettingsPanel() {
                                 </div>
                                 <p className="font-semibold text-[hsl(var(--foreground))]">{provider.name}</p>
                                 <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-                                    {provider.models.length > 0
-                                        ? `${provider.models.length} models available`
-                                        : 'Configure your own endpoint'}
+                                    {provider.description}
                                 </p>
                             </button>
                         ))}
@@ -227,7 +262,7 @@ export function AISettingsPanel() {
                         <div className="relative">
                             <Input
                                 type={showKey ? 'text' : 'password'}
-                                placeholder="sk-..."
+                                placeholder={settings.provider === 'gemini' ? 'AIza...' : 'sk-...'}
                                 value={settings.apiKey}
                                 onChange={(e) => setSettings(prev => ({ ...prev, apiKey: e.target.value }))}
                             />
@@ -272,7 +307,7 @@ export function AISettingsPanel() {
                             </select>
                         ) : (
                             <Input
-                                placeholder="gpt-4-turbo"
+                                placeholder="model-name"
                                 value={settings.model}
                                 onChange={(e) => setSettings(prev => ({ ...prev, model: e.target.value }))}
                             />
@@ -298,6 +333,56 @@ export function AISettingsPanel() {
                 </CardContent>
             </Card>
 
+            {/* AI Training / Custom Prompt */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                            <GraduationCap className="w-5 h-5" />
+                            AI Training — Custom Prompt
+                        </span>
+                        <Button variant="ghost" size="sm" onClick={() => setShowTraining(!showTraining)}>
+                            {showTraining ? 'Collapse' : 'Expand'}
+                        </Button>
+                    </CardTitle>
+                </CardHeader>
+                {showTraining && (
+                    <CardContent className="space-y-4">
+                        <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-[hsl(var(--muted-foreground))]">
+                            <p className="font-medium text-blue-400 mb-1">💡 How to train your AI</p>
+                            <p>Write a custom system prompt to define how your AI assistant behaves. This is added to every conversation. You can specify the AI's expertise, personality, response format, and company-specific knowledge.</p>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-[hsl(var(--foreground))] mb-2 block">
+                                Custom System Prompt
+                            </label>
+                            <textarea
+                                value={settings.customSystemPrompt}
+                                onChange={(e) => setSettings(prev => ({ ...prev, customSystemPrompt: e.target.value }))}
+                                placeholder={DEFAULT_SYSTEM_PROMPT}
+                                rows={10}
+                                className="w-full px-3 py-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] text-sm resize-y focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+                            />
+                            <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                                Leave empty to use the default prompt. Your custom prompt will be combined with operational data from the system.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSettings(prev => ({ ...prev, customSystemPrompt: DEFAULT_SYSTEM_PROMPT }))}
+                            >
+                                <RotateCcw className="w-3 h-3 mr-1" />
+                                Load Default Prompt
+                            </Button>
+                        </div>
+                    </CardContent>
+                )}
+            </Card>
+
             {/* Test & Save */}
             <Card>
                 <CardContent className="p-4">
@@ -312,7 +397,7 @@ export function AISettingsPanel() {
                             {testResult === 'error' && (
                                 <div className="flex items-center gap-2 text-red-400">
                                     <AlertCircle className="w-5 h-5" />
-                                    <span className="text-sm font-medium">Connection failed</span>
+                                    <span className="text-sm font-medium">Connection failed — check API key</span>
                                 </div>
                             )}
                         </div>
@@ -351,13 +436,14 @@ export function AISettingsPanel() {
                     <Brain className="w-4 h-4" />
                     AI Features
                 </h4>
-                <ul className="text-sm text-blue-300 space-y-1">
+                <ul className="text-sm text-[hsl(var(--muted-foreground))] space-y-1">
                     <li>• Document data extraction (Invoice numbers, amounts, dates)</li>
-                    <li>• Risk assessment and compliance checks</li>
-                    <li>• Cross-document validation</li>
-                    <li>• Smart recommendations for logistics operations</li>
+                    <li>• Cross-document validation and anomaly detection</li>
+                    <li>• General assistant with full operational data access</li>
+                    <li>• Customizable AI persona via Training prompt</li>
                 </ul>
             </div>
         </div>
     );
 }
+

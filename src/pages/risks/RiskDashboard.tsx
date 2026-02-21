@@ -9,10 +9,13 @@ import {
     ChevronRight,
     Loader2,
     RefreshCw,
+    Bell,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge } from '@/components/ui';
 import { formatDate, cn } from '@/lib/utils';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 interface BookingData {
     id: string;
@@ -29,23 +32,26 @@ interface BookingData {
 interface RiskItem {
     id: string;
     title: string;
+    bookingId: string;
     bookingNumber: string;
     level: string;
     score: number;
     category: string;
     daysRemaining: number | null;
+    isOverdue: boolean;
 }
 
-interface AlertItem {
+interface NotificationItem {
     id: string;
     type: string;
     title: string;
     message: string;
-    isRead: boolean;
-    createdAt: string;
+    is_read: boolean;
+    created_at: string;
 }
 
 const riskLevelColors: Record<string, { bg: string; text: string; border: string }> = {
+    OVERDUE: { bg: 'bg-red-700/30', text: 'text-red-300', border: 'border-red-600/60' },
     CRITICAL: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/50' },
     HIGH: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/50' },
     MEDIUM: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/50' },
@@ -53,7 +59,9 @@ const riskLevelColors: Record<string, { bg: string; text: string; border: string
 };
 
 export function RiskDashboard() {
+    const navigate = useNavigate();
     const [bookings, setBookings] = useState<BookingData[]>([]);
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -63,19 +71,26 @@ export function RiskDashboard() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Fetch confirmed bookings to analyze risks
-            const res = await fetch(`${API_URL}/api/bookings?status=CONFIRMED`);
-            const data = await res.json();
-            setBookings(data.bookings || []);
+            const [bookingsRes, notificationsRes] = await Promise.all([
+                fetchApi('/api/bookings'),
+                fetchApi('/api/notifications'),
+            ]);
+            // Include all active bookings (exclude CANCELLED, USED, COMPLETED)
+            const activeBookings = (bookingsRes.bookings || []).filter(
+                (b: BookingData) => !['CANCELLED', 'USED', 'COMPLETED'].includes(b.status)
+            );
+            setBookings(activeBookings);
+            setNotifications(notificationsRes.notifications || []);
         } catch (error) {
             console.error('Failed to fetch risk data:', error);
             setBookings([]);
+            setNotifications([]);
         } finally {
             setLoading(false);
         }
     };
 
-    // Calculate days until a date
+    // Calculate days until a date (positive = future, negative = past)
     const calculateDaysUntil = (dateStr: string) => {
         if (!dateStr) return null;
         const target = new Date(dateStr);
@@ -83,82 +98,105 @@ export function RiskDashboard() {
         return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     };
 
-    // Generate risk items from confirmed bookings based on deadlines
+    // Determine risk level and score based on days remaining
+    // Score is calculated dynamically: overdue = 100 (max urgency), then decreases as deadline is further away
+    const classifyRisk = (days: number, deadlineName: string) => {
+        const isOverdue = days < 0;
+
+        if (isOverdue) {
+            // Overdue: score = 100 (capped), level = OVERDUE
+            return {
+                title: `${deadlineName} — OVERDUE`,
+                level: 'OVERDUE' as string,
+                score: 100,
+                isOverdue: true,
+            };
+        } else if (days === 0) {
+            // Due today
+            return {
+                title: `${deadlineName} — TODAY`,
+                level: 'CRITICAL' as string,
+                score: 98,
+                isOverdue: false,
+            };
+        } else if (days <= 1) {
+            return {
+                title: `${deadlineName} — Tomorrow`,
+                level: 'CRITICAL' as string,
+                score: 90,
+                isOverdue: false,
+            };
+        } else if (days <= 3) {
+            return {
+                title: `${deadlineName} Approaching`,
+                level: 'HIGH' as string,
+                score: Math.max(60, 85 - (days * 5)),
+                isOverdue: false,
+            };
+        } else {
+            return {
+                title: `${deadlineName} Upcoming`,
+                level: 'MEDIUM' as string,
+                score: Math.max(30, 60 - (days * 5)),
+                isOverdue: false,
+            };
+        }
+    };
+
+    // Generate risk items from active bookings based on deadlines
     const riskItems: RiskItem[] = bookings.flatMap(booking => {
         const risks: RiskItem[] = [];
 
-        // Check CY Cut-off
-        const daysToCY = calculateDaysUntil(booking.cut_off_cy || '');
-        if (daysToCY !== null && daysToCY <= 3) {
-            risks.push({
-                id: `${booking.id}-cy`,
-                title: 'CY Cut-off Approaching',
-                bookingNumber: booking.booking_number,
-                level: daysToCY <= 1 ? 'CRITICAL' : daysToCY <= 2 ? 'HIGH' : 'MEDIUM',
-                score: daysToCY <= 1 ? 95 : daysToCY <= 2 ? 80 : 65,
-                category: 'DEADLINE',
-                daysRemaining: daysToCY,
-            });
-        }
+        // Deadline checks: [field, display name, category, upcoming threshold]
+        const deadlineChecks: [string | undefined, string, string, number][] = [
+            [booking.cut_off_cy, 'CY Cut-off', 'DEADLINE', 5],
+            [booking.cut_off_si, 'SI Cut-off', 'DOCUMENTS', 4],
+            [booking.cut_off_vgm, 'VGM Cut-off', 'COMPLIANCE', 4],
+            [booking.etd, 'Ship Departure', 'OPERATIONAL', 7],
+        ];
 
-        // Check SI Cut-off
-        const daysToSI = calculateDaysUntil(booking.cut_off_si || '');
-        if (daysToSI !== null && daysToSI <= 2) {
-            risks.push({
-                id: `${booking.id}-si`,
-                title: 'SI Cut-off Approaching',
-                bookingNumber: booking.booking_number,
-                level: daysToSI <= 1 ? 'CRITICAL' : 'HIGH',
-                score: daysToSI <= 1 ? 90 : 75,
-                category: 'DOCUMENTS',
-                daysRemaining: daysToSI,
-            });
-        }
+        for (const [dateValue, name, category, threshold] of deadlineChecks) {
+            const days = calculateDaysUntil(dateValue || '');
+            if (days === null) continue;
 
-        // Check VGM Cut-off
-        const daysToVGM = calculateDaysUntil(booking.cut_off_vgm || '');
-        if (daysToVGM !== null && daysToVGM <= 2) {
-            risks.push({
-                id: `${booking.id}-vgm`,
-                title: 'VGM Cut-off Approaching',
-                bookingNumber: booking.booking_number,
-                level: daysToVGM <= 1 ? 'CRITICAL' : 'HIGH',
-                score: daysToVGM <= 1 ? 88 : 72,
-                category: 'COMPLIANCE',
-                daysRemaining: daysToVGM,
-            });
-        }
+            // Show risk if: overdue (within 30 days) OR approaching (within threshold)
+            const isOverdue = days < 0;
+            if (isOverdue && Math.abs(days) > 30) continue; // Skip very old overdue items
+            if (!isOverdue && days > threshold) continue;   // Skip far-future deadlines
 
-        // Check ETD
-        const daysToETD = calculateDaysUntil(booking.etd || '');
-        if (daysToETD !== null && daysToETD <= 5 && daysToETD > 0) {
+            const classification = classifyRisk(days, name);
+
             risks.push({
-                id: `${booking.id}-etd`,
-                title: 'Ship Departure Approaching',
+                id: `${booking.id}-${name.replace(/\s/g, '').toLowerCase()}`,
+                bookingId: booking.id,
                 bookingNumber: booking.booking_number,
-                level: daysToETD <= 2 ? 'HIGH' : 'MEDIUM',
-                score: daysToETD <= 2 ? 70 : 50,
-                category: 'OPERATIONAL',
-                daysRemaining: daysToETD,
+                category,
+                daysRemaining: days,
+                ...classification,
             });
         }
 
         return risks;
     }).sort((a, b) => b.score - a.score);
 
-    // Generate alerts from confirmed bookings
-    const alerts: AlertItem[] = bookings.slice(0, 3).map(booking => ({
-        id: booking.id,
-        type: 'INFO',
-        title: 'Booking Confirmed',
-        message: `Booking ${booking.booking_number} is confirmed for ${booking.origin_port} → ${booking.destination_port}`,
-        isRead: false,
-        createdAt: new Date().toISOString(),
-    }));
+    // Count bookings with at least one risk (not risk items, which can be multiple per booking)
+    const bookingsWithRisk = new Set(riskItems.map(r => r.bookingId));
+    const bookingsNoRisk = Math.max(0, bookings.length - bookingsWithRisk.size);
 
+    const overdueRisks = riskItems.filter(r => r.level === 'OVERDUE').length;
     const criticalRisks = riskItems.filter(r => r.level === 'CRITICAL').length;
     const highRisks = riskItems.filter(r => r.level === 'HIGH').length;
     const mediumRisks = riskItems.filter(r => r.level === 'MEDIUM').length;
+
+    const handleMarkAllRead = async () => {
+        try {
+            await fetchApi('/api/notifications/read-all', { method: 'PUT' });
+            toast.success('All notifications marked as read');
+            fetchData();
+        } catch {
+            toast.error('Failed to mark notifications as read');
+        }
+    };
 
     if (loading) {
         return (
@@ -178,7 +216,7 @@ export function RiskDashboard() {
                         Risks & Alerts
                     </h1>
                     <p className="text-[hsl(var(--muted-foreground))] mt-1">
-                        Real-time risk monitoring for confirmed bookings
+                        Real-time risk monitoring for active bookings
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -186,15 +224,23 @@ export function RiskDashboard() {
                         <RefreshCw className="w-4 h-4 mr-2" />
                         Refresh
                     </Button>
-                    <Button>
-                        <AlertTriangle className="w-4 h-4 mr-2" />
-                        Risk Report
-                    </Button>
                 </div>
             </div>
 
             {/* Risk Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <Card className="border-red-700/60 bg-red-700/10">
+                    <CardContent className="p-5">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-red-300">Overdue</p>
+                                <p className="text-3xl font-bold text-red-300">{overdueRisks}</p>
+                            </div>
+                            <XCircle className="w-10 h-10 text-red-300" />
+                        </div>
+                    </CardContent>
+                </Card>
+
                 <Card className="border-red-500/50 bg-red-500/5">
                     <CardContent className="p-5">
                         <div className="flex items-center justify-between">
@@ -202,7 +248,7 @@ export function RiskDashboard() {
                                 <p className="text-sm text-red-400">Critical</p>
                                 <p className="text-3xl font-bold text-red-400">{criticalRisks}</p>
                             </div>
-                            <XCircle className="w-10 h-10 text-red-400" />
+                            <AlertTriangle className="w-10 h-10 text-red-400" />
                         </div>
                     </CardContent>
                 </Card>
@@ -214,7 +260,7 @@ export function RiskDashboard() {
                                 <p className="text-sm text-orange-400">High</p>
                                 <p className="text-3xl font-bold text-orange-400">{highRisks}</p>
                             </div>
-                            <AlertTriangle className="w-10 h-10 text-orange-400" />
+                            <AlertCircle className="w-10 h-10 text-orange-400" />
                         </div>
                     </CardContent>
                 </Card>
@@ -226,7 +272,7 @@ export function RiskDashboard() {
                                 <p className="text-sm text-yellow-400">Medium</p>
                                 <p className="text-3xl font-bold text-yellow-400">{mediumRisks}</p>
                             </div>
-                            <AlertCircle className="w-10 h-10 text-yellow-400" />
+                            <Clock className="w-10 h-10 text-yellow-400" />
                         </div>
                     </CardContent>
                 </Card>
@@ -235,8 +281,9 @@ export function RiskDashboard() {
                     <CardContent className="p-5">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm text-green-400">Low / No Risk</p>
-                                <p className="text-3xl font-bold text-green-400">{bookings.length - riskItems.length}</p>
+                                <p className="text-sm text-green-400">No Risk</p>
+                                <p className="text-3xl font-bold text-green-400">{bookingsNoRisk}</p>
+                                <p className="text-xs text-[hsl(var(--muted-foreground))]">of {bookings.length} bookings</p>
                             </div>
                             <CheckCircle className="w-10 h-10 text-green-400" />
                         </div>
@@ -247,7 +294,7 @@ export function RiskDashboard() {
             {/* Active Risks */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Active Risks (from Confirmed Bookings)</CardTitle>
+                    <CardTitle>Active Risks (from Active Bookings)</CardTitle>
                     <Badge variant="secondary">{riskItems.length} Risks</Badge>
                 </CardHeader>
                 <CardContent>
@@ -262,6 +309,7 @@ export function RiskDashboard() {
                                             'p-4 rounded-lg border cursor-pointer transition-all hover:bg-[hsl(var(--secondary))]',
                                             colors.border
                                         )}
+                                        onClick={() => navigate(`/bookings/${risk.bookingId}`)}
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-4">
@@ -282,7 +330,12 @@ export function RiskDashboard() {
                                                 {risk.daysRemaining !== null && (
                                                     <div className={cn('flex items-center gap-1 text-sm font-medium', colors.text)}>
                                                         <Clock className="w-4 h-4" />
-                                                        {risk.daysRemaining} day(s)
+                                                        {risk.daysRemaining < 0
+                                                            ? `${Math.abs(risk.daysRemaining)} day${Math.abs(risk.daysRemaining) !== 1 ? 's' : ''} overdue`
+                                                            : risk.daysRemaining === 0
+                                                                ? 'Due today'
+                                                                : `${risk.daysRemaining} day${risk.daysRemaining !== 1 ? 's' : ''} left`
+                                                        }
                                                     </div>
                                                 )}
                                                 <Badge className={cn(colors.bg, colors.text, 'border-0')}>
@@ -309,40 +362,53 @@ export function RiskDashboard() {
                 </CardContent>
             </Card>
 
-            {/* Recent Alerts */}
+            {/* Real Notifications from Database */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Recent Booking Confirmations</CardTitle>
-                    <Button variant="ghost" size="sm">Mark All Read</Button>
+                    <CardTitle className="flex items-center gap-2">
+                        <Bell className="w-5 h-5" />
+                        Recent Notifications
+                    </CardTitle>
+                    {notifications.filter(n => !n.is_read).length > 0 && (
+                        <Button variant="ghost" size="sm" onClick={handleMarkAllRead}>
+                            Mark All Read
+                        </Button>
+                    )}
                 </CardHeader>
                 <CardContent>
-                    {alerts.length > 0 ? (
+                    {notifications.length > 0 ? (
                         <div className="space-y-3">
-                            {alerts.map((alert) => (
+                            {notifications.slice(0, 10).map((notification) => (
                                 <div
-                                    key={alert.id}
-                                    className="p-4 border-l-4 border-l-blue-400 bg-blue-400/5 rounded-r-lg cursor-pointer transition-all hover:bg-[hsl(var(--secondary))]"
+                                    key={notification.id}
+                                    className={cn(
+                                        'p-4 border-l-4 rounded-r-lg transition-all',
+                                        notification.type === 'WARNING' ? 'border-l-yellow-400 bg-yellow-400/5' :
+                                            notification.type === 'ERROR' ? 'border-l-red-400 bg-red-400/5' :
+                                                notification.type === 'SUCCESS' ? 'border-l-green-400 bg-green-400/5' :
+                                                    'border-l-blue-400 bg-blue-400/5',
+                                        !notification.is_read && 'ring-1 ring-[hsl(var(--primary))]/20'
+                                    )}
                                 >
                                     <div className="flex items-start justify-between">
                                         <div>
                                             <div className="flex items-center gap-2">
-                                                <p className="font-medium text-[hsl(var(--foreground))]">{alert.title}</p>
-                                                {!alert.isRead && (
+                                                <p className="font-medium text-[hsl(var(--foreground))]">{notification.title}</p>
+                                                {!notification.is_read && (
                                                     <span className="w-2 h-2 rounded-full bg-[hsl(var(--primary))]" />
                                                 )}
                                             </div>
-                                            <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">{alert.message}</p>
+                                            <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">{notification.message}</p>
                                             <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">
-                                                {formatDate(alert.createdAt)}
+                                                {formatDate(notification.created_at)}
                                             </p>
                                         </div>
-                                        <Button variant="ghost" size="sm">View</Button>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     ) : (
-                        <p className="text-center text-[hsl(var(--muted-foreground))] py-8">No recent alerts</p>
+                        <p className="text-center text-[hsl(var(--muted-foreground))] py-8">No notifications yet</p>
                     )}
                 </CardContent>
             </Card>

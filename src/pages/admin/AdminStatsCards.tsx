@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Users, Key, Monitor, Activity, TrendingUp } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
+import { fetchApi } from '@/lib/api';
 
 interface Stats {
     users: {
@@ -26,25 +26,16 @@ interface Stats {
     }>;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
+
 
 export function AdminStatsCards() {
-    const { token } = useAuthStore();
     const [stats, setStats] = useState<Stats | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const response = await fetch(`${API_URL}/api/admin/stats`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-
-                if (!response.ok) throw new Error('Failed to fetch stats');
-
-                const data = await response.json();
+                const data = await fetchApi('/api/admin/stats');
                 setStats(data);
             } catch (err) {
                 console.error(err);
@@ -54,7 +45,7 @@ export function AdminStatsCards() {
         };
 
         fetchStats();
-    }, [token]);
+    }, []);
 
     if (loading) {
         return <div className="text-center py-8 text-muted-foreground">Loading statistics...</div>;

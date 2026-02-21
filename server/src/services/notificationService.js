@@ -32,6 +32,23 @@ class NotificationService {
         } = options;
 
         try {
+            // ── Duplicate check: skip if same type + reference exists within 24h ──
+            const refId = bookingId || shipmentId || null;
+            if (refId) {
+                const refColumn = bookingId ? 'booking_id' : 'shipment_id';
+                const { rows: existing } = await pool.query(
+                    `SELECT id FROM notifications 
+                     WHERE type = $1 AND ${refColumn} = $2 
+                     AND created_at > NOW() - INTERVAL '24 hours'
+                     LIMIT 1`,
+                    [type, refId]
+                );
+                if (existing.length > 0) {
+                    // Already notified about this same issue recently — skip
+                    return null;
+                }
+            }
+
             // 1. Save to database
             const { rows } = await pool.query(
                 `INSERT INTO notifications 
@@ -130,18 +147,18 @@ class NotificationService {
         <body>
           <div class="container">
             <div class="header">
-              <h1 style="margin: 0;">LogisPro Alert</h1>
+              <h1 style="margin: 0;">Ago Logistics Alert</h1>
             </div>
             <div class="content">
               <p><span class="priority-badge">${priority}</span></p>
               <h2>${subject}</h2>
               <p>${message}</p>
               <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-              <p style="color: #6b7280;">Đăng nhập LogisPro để xem chi tiết và xử lý.</p>
+              <p style="color: #6b7280;">Log in to Ago Logistics to view details and take action.</p>
             </div>
             <div class="footer">
-              <p>LogisPro - Export Logistics Management System</p>
-              <p>© 2026 Rosette Exports</p>
+              <p>Ago Logistics - Export Logistics Management System</p>
+              <p>&copy; 2026 Ago Import Export Co.,Ltd</p>
             </div>
           </div>
         </body>
@@ -149,7 +166,7 @@ class NotificationService {
       `;
 
             await this.transporter.sendMail({
-                from: process.env.SMTP_FROM || 'LogisPro <noreply@logispro.app>',
+                from: process.env.SMTP_FROM || 'Ago Logistics <noreply@agologistics.app>',
                 to,
                 subject: `[${priority}] ${subject}`,
                 html,

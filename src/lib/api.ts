@@ -1,9 +1,23 @@
 // API Configuration
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// Helper to get auth token from zustand persist storage
+function getAuthToken(): string | null {
+    try {
+        const authData = localStorage.getItem('logispro-auth');
+        if (authData) {
+            const parsed = JSON.parse(authData);
+            return parsed?.state?.token || null;
+        }
+    } catch {
+        // ignore parse errors
+    }
+    return null;
+}
+
 // Helper for API calls
 export async function fetchApi(path: string, options: RequestInit = {}) {
-    const token = localStorage.getItem('token');
+    const token = getAuthToken();
 
     const response = await fetch(`${API_URL}${path}`, {
         ...options,
@@ -16,8 +30,26 @@ export async function fetchApi(path: string, options: RequestInit = {}) {
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(error.error || error.message || 'Request failed');
+
+        // Build descriptive error message for validation errors
+        let message = error.error || error.message || 'Request failed';
+        if (error.details && Array.isArray(error.details) && error.details.length > 0) {
+            // Show up to 3 validation errors
+            const shown = error.details.slice(0, 3);
+            message = shown.join('. ');
+            if (error.details.length > 3) {
+                message += ` (+${error.details.length - 3} more)`;
+            }
+        }
+
+        // Special case for conflict (optimistic locking)
+        if (response.status === 409) {
+            message = error.error || 'This record was modified by another user. Please refresh and try again.';
+        }
+
+        throw new Error(message);
     }
+
 
     return response.json();
 }
@@ -63,12 +95,16 @@ export const api = {
         fetchApi(`/api/documents/shipment/${shipmentId}`),
 
     uploadDocument: async (formData: FormData) => {
-        const token = localStorage.getItem('token');
+        const token = getAuthToken();
         const response = await fetch(`${API_URL}/api/documents/upload`, {
             method: 'POST',
             headers: token ? { Authorization: `Bearer ${token}` } : {},
             body: formData,
         });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+            throw new Error(error.error || error.message || 'Upload failed');
+        }
         return response.json();
     },
 
@@ -101,4 +137,21 @@ export const api = {
 
     triggerDeadlineCheck: () =>
         fetchApi('/api/test/trigger-deadline-check', { method: 'POST' }),
+
+    // AI Assistant (General Chat)
+    assistantChat: (message: string, sessionId?: string) =>
+        fetchApi('/api/ai/assistant/chat', {
+            method: 'POST',
+            body: JSON.stringify({ message, sessionId }),
+        }),
+
+    getAssistantHistory: (sessionId?: string) => {
+        const query = sessionId ? `?sessionId=${sessionId}` : '';
+        return fetchApi(`/api/ai/assistant/history${query}`);
+    },
+
+    clearAssistantHistory: (sessionId?: string) => {
+        const query = sessionId ? `?sessionId=${sessionId}` : '';
+        return fetchApi(`/api/ai/assistant/history${query}`, { method: 'DELETE' });
+    },
 };

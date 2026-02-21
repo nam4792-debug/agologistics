@@ -5,6 +5,7 @@ export type ShipmentType = 'FCL' | 'AIR';
 export type ShipmentStatus =
     | 'DRAFT'
     | 'BOOKING_CONFIRMED'
+    | 'BOOKED'
     | 'DOCUMENTATION_IN_PROGRESS'
     | 'READY_TO_LOAD'
     | 'LOADING'

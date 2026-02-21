@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS qc_staff (
 -- ============================================
 CREATE TABLE IF NOT EXISTS forwarders (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  provider_code VARCHAR(50),
   company_name VARCHAR(200) NOT NULL,
   contact_name VARCHAR(100),
   email VARCHAR(255),
@@ -143,6 +144,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   freight_rate_usd DECIMAL(12,2),
   
   notes TEXT,
+  shipping_line VARCHAR(200),
   created_by UUID REFERENCES users(id),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -260,6 +262,8 @@ CREATE TABLE IF NOT EXISTS truck_dispatches (
   
   status VARCHAR(50) DEFAULT 'SCHEDULED',
   notes TEXT,
+  
+  shipment_id UUID REFERENCES shipments(id),
   
   created_by UUID REFERENCES users(id),
   created_at TIMESTAMP DEFAULT NOW(),
@@ -402,7 +406,7 @@ CREATE TABLE IF NOT EXISTS document_sync (
 -- LICENSE KEYS TABLE
 CREATE TABLE IF NOT EXISTS licenses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  license_key VARCHAR(100) UNIQUE NOT NULL,
+  license_key VARCHAR(500) UNIQUE NOT NULL,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   type VARCHAR(50) DEFAULT 'STANDARD', -- TRIAL, STANDARD, PREMIUM
   max_devices INTEGER DEFAULT 1, -- Device-based: 1 license = 1 device
@@ -421,11 +425,11 @@ CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(revoked, expires_at);
 -- DEVICE ACTIVATIONS TABLE
 CREATE TABLE IF NOT EXISTS device_activations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  license_key VARCHAR(100) REFERENCES licenses(license_key) ON DELETE CASCADE,
+  license_key VARCHAR(500) REFERENCES licenses(license_key) ON DELETE CASCADE,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  device_id VARCHAR(200) UNIQUE NOT NULL, -- Hardware fingerprint (CPU + Motherboard hash)
-  device_name VARCHAR(200), -- Computer name
-  os_info VARCHAR(100), -- Windows 11, macOS 14.2, etc.
+  device_id VARCHAR(500) UNIQUE NOT NULL, -- Hardware fingerprint (CPU + Motherboard hash)
+  device_name VARCHAR(500), -- Computer name
+  os_info VARCHAR(500), -- Windows 11, macOS 14.2, etc.
   activated_at TIMESTAMP DEFAULT NOW(),
   last_seen TIMESTAMP DEFAULT NOW(),
   is_active BOOLEAN DEFAULT true
@@ -438,8 +442,8 @@ CREATE INDEX IF NOT EXISTS idx_device_activations_user ON device_activations(use
 -- ADMIN WHITELIST TABLE (Hardware-locked admin access)
 CREATE TABLE IF NOT EXISTS admin_whitelist (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  device_id VARCHAR(200) UNIQUE NOT NULL, -- Whitelisted machine ID
-  device_name VARCHAR(200),
+  device_id VARCHAR(500) UNIQUE NOT NULL, -- Whitelisted machine ID
+  device_name VARCHAR(500),
   granted_by UUID REFERENCES users(id),
   granted_at TIMESTAMP DEFAULT NOW(),
   revoked BOOLEAN DEFAULT false,
@@ -448,3 +452,207 @@ CREATE TABLE IF NOT EXISTS admin_whitelist (
 );
 
 CREATE INDEX IF NOT EXISTS idx_admin_whitelist_device ON admin_whitelist(device_id, revoked);
+
+-- ============================================
+-- SCHEMA MIGRATIONS (safe to re-run)
+-- ============================================
+
+-- Gap #3: Add booking_id to documents for direct Booking→Document link
+DO $$ BEGIN
+  ALTER TABLE documents ADD COLUMN IF NOT EXISTS booking_id UUID REFERENCES bookings(id);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_documents_booking ON documents(booking_id);
+
+-- Document Versioning: Add parent_document_id and is_latest columns
+DO $$ BEGIN
+  ALTER TABLE documents ADD COLUMN IF NOT EXISTS parent_document_id UUID REFERENCES documents(id);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_latest BOOLEAN DEFAULT true;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_document_id);
+CREATE INDEX IF NOT EXISTS idx_documents_latest ON documents(is_latest);
+
+-- Gap #9: Audit Trail table
+CREATE TABLE IF NOT EXISTS audit_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  entity_type VARCHAR(50) NOT NULL,  -- 'booking', 'shipment', 'dispatch', etc.
+  entity_id UUID NOT NULL,
+  action VARCHAR(50) NOT NULL,       -- 'CREATE', 'UPDATE', 'DELETE', 'CANCEL', 'CONFIRM'
+  user_id UUID REFERENCES users(id),
+  changes JSONB,                     -- { field: { old: X, new: Y } }
+  ip_address VARCHAR(50),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
+
+-- Add provider_code to forwarders (used by providers.js for vendor display)
+DO $$ BEGIN
+  ALTER TABLE forwarders ADD COLUMN IF NOT EXISTS provider_code VARCHAR(50);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- Vendor Credit Warning: Add credit_limit_monthly to forwarders
+DO $$ BEGIN
+  ALTER TABLE forwarders ADD COLUMN IF NOT EXISTS credit_limit_monthly DECIMAL(15,2) DEFAULT 0;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- Vendor Credit Warning: Add forwarder_id to invoices for credit tracking
+DO $$ BEGIN
+  ALTER TABLE invoices ADD COLUMN IF NOT EXISTS forwarder_id UUID REFERENCES forwarders(id);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_invoices_forwarder ON invoices(forwarder_id);
+
+-- Add shipping_line column to bookings if it doesn't exist
+DO $$ BEGIN
+  ALTER TABLE bookings ADD COLUMN IF NOT EXISTS shipping_line VARCHAR(200);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- Add origin_port/destination_port to bookings if they don't exist
+DO $$ BEGIN
+  ALTER TABLE bookings ADD COLUMN IF NOT EXISTS origin_port VARCHAR(100);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE bookings ADD COLUMN IF NOT EXISTS destination_port VARCHAR(100);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE bookings ADD COLUMN IF NOT EXISTS route VARCHAR(200);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- Add shipment_id to truck_dispatches if it doesn't exist
+DO $$ BEGIN
+  ALTER TABLE truck_dispatches ADD COLUMN IF NOT EXISTS shipment_id UUID REFERENCES shipments(id);
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- AI: App Settings table (stores API keys etc.)
+CREATE TABLE IF NOT EXISTS app_settings (
+  key VARCHAR(100) PRIMARY KEY,
+  value TEXT,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- AI: Analysis results per document
+CREATE TABLE IF NOT EXISTS ai_analysis_results (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+  shipment_id UUID REFERENCES shipments(id),
+  analysis_type VARCHAR(50) DEFAULT 'EXTRACTION', -- EXTRACTION, CROSS_CHECK
+  result JSONB,
+  model VARCHAR(50),
+  tokens_used INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_results_document ON ai_analysis_results(document_id);
+CREATE INDEX IF NOT EXISTS idx_ai_results_shipment ON ai_analysis_results(shipment_id);
+
+-- AI: Chat messages per shipment
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  shipment_id UUID REFERENCES shipments(id),
+  role VARCHAR(20) NOT NULL, -- 'user' or 'assistant'
+  content TEXT NOT NULL,
+  context JSONB, -- optional context (document refs, etc.)
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_chat_shipment ON ai_chat_messages(shipment_id);
+
+-- AI: General assistant chat (not per-shipment)
+CREATE TABLE IF NOT EXISTS ai_general_chat (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id),
+  session_id VARCHAR(100) NOT NULL, -- groups messages in a conversation
+  role VARCHAR(20) NOT NULL, -- 'user' or 'assistant'
+  content TEXT NOT NULL,
+  tokens_used INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_general_chat_session ON ai_general_chat(session_id);
+CREATE INDEX IF NOT EXISTS idx_ai_general_chat_user ON ai_general_chat(user_id);
+
+-- Optimistic locking: version column for conflict detection
+DO $$ BEGIN
+  ALTER TABLE shipments ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE bookings ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- ════════════════════════════════════════════════════════════
+-- Cost Management: Invoice Line Items, Exchange Rates, Revenue
+-- ════════════════════════════════════════════════════════════
+
+-- Detailed fee breakdown per invoice
+CREATE TABLE IF NOT EXISTS invoice_line_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+    fee_type VARCHAR(50) NOT NULL,
+    description VARCHAR(200),
+    amount DECIMAL(15,2) NOT NULL,
+    currency VARCHAR(10) DEFAULT 'USD',
+    amount_usd DECIMAL(15,2),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_line_items_invoice ON invoice_line_items(invoice_id);
+
+-- Exchange rates (manual entry)
+CREATE TABLE IF NOT EXISTS exchange_rates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    from_currency VARCHAR(10) NOT NULL,
+    to_currency VARCHAR(10) NOT NULL,
+    rate DECIMAL(15,6) NOT NULL,
+    effective_date DATE NOT NULL,
+    source VARCHAR(50) DEFAULT 'manual',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_exchange_rates_date ON exchange_rates(effective_date DESC);
+
+-- Revenue tracking per shipment (for P&L)
+CREATE TABLE IF NOT EXISTS shipment_revenue (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    shipment_id UUID NOT NULL REFERENCES shipments(id) ON DELETE CASCADE,
+    description VARCHAR(200),
+    amount DECIMAL(15,2) NOT NULL,
+    currency VARCHAR(10) DEFAULT 'USD',
+    amount_usd DECIMAL(15,2),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_shipment_revenue_shipment ON shipment_revenue(shipment_id);
+
+-- Customer Portal OTP tokens
+CREATE TABLE IF NOT EXISTS customer_portal_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    token VARCHAR(500) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_portal_tokens_customer ON customer_portal_tokens(customer_id);

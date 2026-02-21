@@ -25,6 +25,11 @@ class WorkflowService {
 
             const booking = bookings[0];
 
+            // Guard: only PENDING bookings can be confirmed
+            if (booking.status !== 'PENDING') {
+                throw new Error(`Cannot confirm booking with status "${booking.status}". Only PENDING bookings can be confirmed.`);
+            }
+
             // 2. Update booking status
             await pool.query(
                 `UPDATE bookings SET status = 'CONFIRMED', updated_at = NOW() WHERE id = $1`,
@@ -39,8 +44,8 @@ class WorkflowService {
                     `INSERT INTO shipments 
                     (shipment_number, type, status, origin_port, destination_port, 
                      cargo_description, container_count, container_type, etd, eta, 
-                     incoterm, created_by)
-                    VALUES ($1, $2, 'BOOKING_CONFIRMED', $3, $4, $5, $6, $7, $8, $9, 'FOB', $10)
+                     incoterm, forwarder_id, customer_id, created_by)
+                    VALUES ($1, $2, 'BOOKED', $3, $4, $5, $6, $7, $8, $9, 'FOB', $10, $11, $12)
                     RETURNING id`,
                     [
                         shipmentNumber,
@@ -52,6 +57,8 @@ class WorkflowService {
                         booking.container_type || '40GP',
                         booking.etd,
                         booking.eta,
+                        booking.forwarder_id || null,
+                        booking.customer_id || null,
                         userId
                     ]
                 );
@@ -66,10 +73,12 @@ class WorkflowService {
                     console.log(`✅ Auto-created shipment ${shipmentNumber} for booking ${booking.booking_number}`);
                 }
             } else {
-                // Update existing shipment status to BOOKING_CONFIRMED
+                // Sync shipment status to BOOKED when booking is confirmed
                 await pool.query(
-                    `UPDATE shipments SET status = 'BOOKING_CONFIRMED', updated_at = NOW() WHERE id = $1`,
-                    [shipmentId]
+                    `UPDATE shipments SET status = 'BOOKED', 
+                     forwarder_id = COALESCE(forwarder_id, $1),
+                     updated_at = NOW() WHERE id = $2`,
+                    [booking.forwarder_id || null, shipmentId]
                 );
             }
 
@@ -107,8 +116,8 @@ class WorkflowService {
          RETURNING *`,
                 [
                     bookingId,
-                    `Điều xe cho booking ${booking.booking_number}`,
-                    `Cần điều xe để đóng hàng trước cut-off CY. Tuyến: ${booking.route || 'N/A'}. Tàu: ${booking.vessel_flight || 'N/A'}`,
+                    `Arrange truck dispatch for booking ${booking.booking_number}`,
+                    `Schedule truck for container stuffing before CY cut-off. Route: ${booking.route || 'N/A'}. Vessel: ${booking.vessel_flight || 'N/A'}`,
                     truckDeadline,
                 ]
             );
@@ -133,25 +142,25 @@ class WorkflowService {
          RETURNING *`,
                 [
                     bookingId,
-                    `Chuẩn bị chứng từ cho booking ${booking.booking_number}`,
-                    `Cần gửi Invoice, Packing List, Draft B/L cho forwarder trước cut-off SI`,
+                    `Prepare documents for booking ${booking.booking_number}`,
+                    `Submit Invoice, Packing List, Draft B/L to forwarder before SI cut-off`,
                     docDeadline,
                 ]
             );
 
             // 6. Send notification
             const deadlineStr = truckDeadline
-                ? new Date(truckDeadline).toLocaleString('vi-VN')
+                ? new Date(truckDeadline).toLocaleString('en-US')
                 : 'TBD';
             await notificationService.send(
                 {
                     type: 'SALES_CONFIRMED',
                     priority: 'HIGH',
-                    title: `✅ Sales đã confirm booking ${booking.booking_number}`,
-                    message: `Cần điều xe trước ${deadlineStr}. Tuyến: ${booking.route || 'N/A'}`,
+                    title: `✅ Booking ${booking.booking_number} confirmed by sales`,
+                    message: `Truck dispatch needed before ${deadlineStr}. Route: ${booking.route || 'N/A'}`,
                     bookingId: bookingId,
                     actionUrl: `/bookings/${bookingId}`,
-                    actionLabel: 'Điều Xe Ngay',
+                    actionLabel: 'Dispatch Truck Now',
                 },
                 io
             );
@@ -194,8 +203,8 @@ class WorkflowService {
                 {
                     type: 'TASK_COMPLETED',
                     priority: 'LOW',
-                    title: `✅ Task hoàn thành: ${task.title}`,
-                    message: `Task ${task.task_type} đã được hoàn thành`,
+                    title: `✅ Task completed: ${task.title}`,
+                    message: `Task ${task.task_type} has been completed`,
                     bookingId: task.booking_id,
                 },
                 io
@@ -264,11 +273,11 @@ class WorkflowService {
                 {
                     type: 'TRUCK_DISPATCHED',
                     priority: 'MEDIUM',
-                    title: `🚛 Xe đã được điều: ${truckPlate}`,
-                    message: `Booking ${bookings[0]?.booking_number || bookingId}. Tài xế: ${driverName}. Lấy hàng: ${new Date(pickupDatetime).toLocaleString('vi-VN')}`,
+                    title: `🚛 Truck dispatched: ${truckPlate}`,
+                    message: `Booking ${bookings[0]?.booking_number || bookingId}. Driver: ${driverName}. Pickup: ${new Date(pickupDatetime).toLocaleString('en-US')}`,
                     bookingId: bookingId,
                     actionUrl: `/bookings/${bookingId}`,
-                    actionLabel: 'Xem Chi Tiết',
+                    actionLabel: 'View Details',
                 },
                 io
             );

@@ -9,6 +9,7 @@ import {
     Ship,
     AlertTriangle,
     CheckCircle,
+    XCircle,
     FileText,
     Truck,
     User,
@@ -17,8 +18,9 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge } from '@/components/ui';
 import { formatDate, formatCurrency, cn } from '@/lib/utils';
+import { DispatchModal } from '@/components/logistics';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface BookingData {
     id: string;
@@ -44,6 +46,8 @@ interface BookingData {
     forwarder_name: string;
     forwarder_contact: string;
     shipment_number: string;
+    shipment_id: string;
+    shipping_line: string;
     created_at: string;
 }
 
@@ -73,6 +77,10 @@ export function BookingDetail() {
     const [tasks, setTasks] = useState<TaskData[]>([]);
     const [dispatches, setDispatches] = useState<DispatchData[]>([]);
     const [confirming, setConfirming] = useState(false);
+    const [cancelling, setCancelling] = useState(false);
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [cancelReason, setCancelReason] = useState('');
+    const [showDispatchModal, setShowDispatchModal] = useState(false);
 
     useEffect(() => {
         if (id) {
@@ -82,8 +90,7 @@ export function BookingDetail() {
 
     const loadBookingDetails = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/bookings/${id}`);
-            const data = await response.json();
+            const data = await fetchApi(`/api/bookings/${id}`);
 
             if (data.booking) {
                 setBooking(data.booking);
@@ -103,26 +110,46 @@ export function BookingDetail() {
         setConfirming(true);
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${API_URL}/api/bookings/${id}/confirm`, {
+            const data = await fetchApi(`/api/bookings/${id}/confirm`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(token && { Authorization: `Bearer ${token}` }),
-                },
             });
+            toast.success('Booking confirmed! Workflow tasks created.');
 
-            if (response.ok) {
-                toast.success('Booking confirmed! Workflow tasks created.');
-                loadBookingDetails();
-            } else {
-                const data = await response.json();
-                toast.error(data.error || 'Failed to confirm booking');
+            // Show credit warning if present
+            if (data.creditWarning) {
+                const w = data.creditWarning;
+                if (w.level === 'RED') {
+                    toast.error(`${w.title}\n${w.message}`, { duration: 8000 });
+                } else {
+                    toast(w.message, { icon: '⚡', duration: 6000 });
+                }
             }
-        } catch (error) {
-            toast.error('Failed to confirm booking');
+
+            loadBookingDetails();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to confirm booking');
         } finally {
             setConfirming(false);
+        }
+    };
+
+    const handleCancel = async () => {
+        if (!id || !cancelReason.trim()) return;
+        setCancelling(true);
+
+        try {
+            await fetchApi(`/api/bookings/${id}/cancel`, {
+                method: 'POST',
+                body: JSON.stringify({ reason: cancelReason }),
+            });
+            toast.success('Booking cancelled successfully');
+            setShowCancelModal(false);
+            setCancelReason('');
+            loadBookingDetails();
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to cancel booking');
+        } finally {
+            setCancelling(false);
         }
     };
 
@@ -147,6 +174,7 @@ export function BookingDetail() {
     const isFCL = booking.type === 'FCL';
     const isPending = booking.status === 'PENDING';
     const isConfirmed = booking.status === 'CONFIRMED' || booking.sales_confirmed;
+    const canCancel = booking.status !== 'CANCELLED' && booking.status !== 'USED';
 
     return (
         <div className="space-y-6">
@@ -187,8 +215,51 @@ export function BookingDetail() {
                             Confirm Booking
                         </Button>
                     )}
+                    {canCancel && (
+                        <Button
+                            variant="outline"
+                            className="text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
+                            onClick={() => setShowCancelModal(true)}
+                        >
+                            <XCircle className="w-4 h-4 mr-2" />
+                            Cancel Booking
+                        </Button>
+                    )}
                 </div>
             </div>
+
+            {/* Cancel Booking Modal */}
+            {showCancelModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-[hsl(var(--card))] rounded-xl p-6 max-w-md w-full mx-4 space-y-4">
+                        <h3 className="text-lg font-semibold text-[hsl(var(--foreground))]">
+                            Cancel Booking {booking.booking_number}?
+                        </h3>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                            This will cancel the booking, related tasks, and truck dispatches. The record will be preserved for audit purposes.
+                        </p>
+                        <textarea
+                            className="w-full p-3 rounded-lg bg-[hsl(var(--background))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]"
+                            placeholder="Reason for cancellation (required)..."
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                        />
+                        <div className="flex gap-3 justify-end">
+                            <Button variant="outline" onClick={() => { setShowCancelModal(false); setCancelReason(''); }}>
+                                Keep Booking
+                            </Button>
+                            <Button
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                                onClick={handleCancel}
+                                disabled={cancelling || !cancelReason.trim()}
+                            >
+                                {cancelling ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+                                Confirm Cancellation
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Main Info Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -261,6 +332,31 @@ export function BookingDetail() {
                                 </p>
                             </div>
                         </div>
+
+                        {/* Shipping Line */}
+                        {booking.shipping_line && (
+                            <div className="pt-4 border-t border-[hsl(var(--border))]">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Shipping Line</p>
+                                    <p className="font-medium text-[hsl(var(--foreground))]">{booking.shipping_line}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Linked Shipment */}
+                        {booking.shipment_number && (
+                            <div className="pt-4 border-t border-[hsl(var(--border))]">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">Linked Shipment</p>
+                                    <button
+                                        className="font-medium text-[hsl(var(--primary))] hover:underline"
+                                        onClick={() => navigate(`/shipments/${booking.shipment_id}`)}
+                                    >
+                                        {booking.shipment_number} →
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -374,7 +470,7 @@ export function BookingDetail() {
                         Truck Dispatch
                     </CardTitle>
                     {isConfirmed && (
-                        <Button size="sm" onClick={() => toast.success('Dispatch modal coming soon!')}>
+                        <Button size="sm" onClick={() => setShowDispatchModal(true)}>
                             Schedule Dispatch
                         </Button>
                     )}
@@ -450,6 +546,22 @@ export function BookingDetail() {
                         <p className="text-[hsl(var(--foreground))]">{booking.notes}</p>
                     </CardContent>
                 </Card>
+            )}
+
+            {/* Dispatch Modal */}
+            {booking && (
+                <DispatchModal
+                    isOpen={showDispatchModal}
+                    onClose={() => setShowDispatchModal(false)}
+                    onSuccess={() => {
+                        setShowDispatchModal(false);
+                        loadBookingDetails();
+                        toast.success('Dispatch scheduled!');
+                    }}
+                    bookingId={booking.id}
+                    bookingNumber={booking.booking_number}
+                    containerType={booking.container_type}
+                />
             )}
         </div>
     );

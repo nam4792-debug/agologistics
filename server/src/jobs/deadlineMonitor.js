@@ -6,8 +6,21 @@ async function checkDeadlines(io) {
     console.log('🔍 Checking booking deadlines...');
 
     try {
-        // Query pending bookings with their deadlines
-        const { rows: bookings } = await pool.query(`
+        // ===== PHASE 1: Pre-confirm monitoring (pending bookings) =====
+        await checkPreConfirmDeadlines(io);
+
+        // ===== PHASE 2: Post-confirm monitoring (confirmed but no dispatch) =====
+        await checkPostConfirmDeadlines(io);
+
+        console.log('✅ Deadline check complete\n');
+    } catch (error) {
+        console.error('❌ Error checking deadlines:', error);
+    }
+}
+
+// Phase 1: Original pre-confirm deadline tracking
+async function checkPreConfirmDeadlines(io) {
+    const { rows: bookings } = await pool.query(`
       SELECT 
         bd.*,
         b.booking_number,
@@ -18,87 +31,172 @@ async function checkDeadlines(io) {
       JOIN bookings b ON bd.booking_id = b.id
       WHERE bd.status = 'PENDING' 
         AND bd.sales_confirmed = false
+        AND b.status != 'CANCELLED'
     `);
 
-        if (bookings.length === 0) {
-            console.log('   No pending bookings found');
-            return;
-        }
-
-        console.log(`   Found ${bookings.length} pending bookings`);
-
-        const now = new Date();
-
-        for (const booking of bookings) {
-            // Find earliest deadline
-            const deadlines = [
-                { type: 'SI', date: new Date(booking.cut_off_si) },
-                { type: 'VGM', date: new Date(booking.cut_off_vgm) },
-                { type: 'CY', date: new Date(booking.cut_off_cy) },
-            ].sort((a, b) => a.date - b.date);
-
-            const earliestDeadline = deadlines[0];
-            const hoursUntil = (earliestDeadline.date - now) / (1000 * 60 * 60);
-
-            let shouldAlert = false;
-            let alertType = null;
-            let priority = 'MEDIUM';
-
-            // Check which alert to send
-            if (hoursUntil < 0 && !booking.alert_sent_overdue) {
-                shouldAlert = true;
-                alertType = 'overdue';
-                priority = 'CRITICAL';
-            } else if (hoursUntil <= 6 && hoursUntil > 0 && !booking.alert_sent_6h) {
-                shouldAlert = true;
-                alertType = '6h';
-                priority = 'CRITICAL';
-            } else if (hoursUntil <= 12 && hoursUntil > 6 && !booking.alert_sent_12h) {
-                shouldAlert = true;
-                alertType = '12h';
-                priority = 'HIGH';
-            } else if (hoursUntil <= 24 && hoursUntil > 12 && !booking.alert_sent_24h) {
-                shouldAlert = true;
-                alertType = '24h';
-                priority = 'MEDIUM';
-            } else if (hoursUntil <= 48 && hoursUntil > 24 && !booking.alert_sent_48h) {
-                shouldAlert = true;
-                alertType = '48h';
-                priority = 'LOW';
-            }
-
-            if (shouldAlert) {
-                const alertData = {
-                    type: `DEADLINE_${alertType.toUpperCase()}`,
-                    priority,
-                    title: getAlertTitle(alertType, booking),
-                    message: getAlertMessage(alertType, booking, hoursUntil, earliestDeadline.type),
-                    bookingId: booking.booking_id,
-                    actionUrl: `/bookings/${booking.booking_id}`,
-                    actionLabel: 'Xem Booking',
-                };
-
-                // Send notification
-                await notificationService.send(alertData, io);
-
-                // Mark alert as sent
-                const columnName = `alert_sent_${alertType.replace('h', 'h')}`;
-                await pool.query(
-                    `UPDATE booking_deadlines 
-           SET ${columnName} = true,
-               updated_at = NOW()
-           WHERE id = $1`,
-                    [booking.id]
-                );
-
-                console.log(`   ⚠️ Alert sent: ${booking.booking_number} - ${alertType.toUpperCase()}`);
-            }
-        }
-
-        console.log('✅ Deadline check complete\n');
-    } catch (error) {
-        console.error('❌ Error checking deadlines:', error);
+    if (bookings.length === 0) {
+        console.log('   No pending pre-confirm bookings found');
+        return;
     }
+
+    console.log(`   Found ${bookings.length} pending pre-confirm bookings`);
+
+    const now = new Date();
+
+    for (const booking of bookings) {
+        const deadlines = getValidDeadlines(booking);
+        if (deadlines.length === 0) continue;
+
+        const earliestDeadline = deadlines[0];
+        const hoursUntil = (earliestDeadline.date - now) / (1000 * 60 * 60);
+
+        const alertInfo = determineAlert(booking, hoursUntil);
+
+        if (alertInfo.shouldAlert) {
+            const alertData = {
+                type: `DEADLINE_${alertInfo.alertType.toUpperCase()}`,
+                priority: alertInfo.priority,
+                title: getAlertTitle(alertInfo.alertType, booking),
+                message: getPreConfirmMessage(alertInfo.alertType, booking, hoursUntil, earliestDeadline.type),
+                bookingId: booking.booking_id,
+                actionUrl: `/bookings/${booking.booking_id}`,
+                actionLabel: 'View Booking',
+            };
+
+            await notificationService.send(alertData, io);
+            await markAlertSent(booking.id, alertInfo.alertType);
+            console.log(`   ⚠️ Pre-confirm alert: ${booking.booking_number} - ${alertInfo.alertType.toUpperCase()}`);
+        }
+    }
+}
+
+// Phase 2: Post-confirm deadline tracking (confirmed but missing dispatch)
+async function checkPostConfirmDeadlines(io) {
+    const { rows: bookings } = await pool.query(`
+      SELECT 
+        bd.*,
+        b.booking_number,
+        b.route,
+        b.vessel_flight,
+        b.type,
+        b.id as b_id
+      FROM booking_deadlines bd
+      JOIN bookings b ON bd.booking_id = b.id
+      WHERE bd.sales_confirmed = true
+        AND b.status = 'CONFIRMED'
+        AND b.status != 'CANCELLED'
+        AND NOT EXISTS (
+          SELECT 1 FROM truck_dispatches td 
+          WHERE td.booking_id = b.id 
+          AND td.status NOT IN ('CANCELLED')
+        )
+    `);
+
+    if (bookings.length === 0) {
+        console.log('   No confirmed bookings without dispatch found');
+        return;
+    }
+
+    console.log(`   Found ${bookings.length} confirmed bookings without dispatch`);
+
+    const now = new Date();
+
+    for (const booking of bookings) {
+        const deadlines = getValidDeadlines(booking);
+        if (deadlines.length === 0) continue;
+
+        const earliestDeadline = deadlines[0];
+        const hoursUntil = (earliestDeadline.date - now) / (1000 * 60 * 60);
+
+        // Only alert if deadline is within 72 hours (more aggressive for post-confirm)
+        if (hoursUntil > 72) continue;
+
+        let priority = 'MEDIUM';
+        let urgency = '';
+
+        if (hoursUntil < 0) {
+            priority = 'CRITICAL';
+            urgency = 'OVERDUE';
+        } else if (hoursUntil <= 12) {
+            priority = 'CRITICAL';
+            urgency = 'VERY URGENT';
+        } else if (hoursUntil <= 24) {
+            priority = 'HIGH';
+            urgency = 'URGENT';
+        } else if (hoursUntil <= 48) {
+            priority = 'MEDIUM';
+            urgency = 'ATTENTION NEEDED';
+        } else {
+            priority = 'LOW';
+            urgency = 'REMINDER';
+        }
+
+        const alertData = {
+            type: 'DISPATCH_NEEDED',
+            priority,
+            title: `🚛 ${urgency}: No truck dispatched for ${booking.booking_number}`,
+            message: `Booking confirmed but no truck assigned. ${hoursUntil > 0 ? hoursUntil.toFixed(1) : '0'} hours until Cut-off ${earliestDeadline.type}. Route: ${booking.route || 'N/A'}. DISPATCH TRUCK NOW!`,
+            bookingId: booking.booking_id,
+            actionUrl: `/bookings/${booking.booking_id}`,
+            actionLabel: 'Dispatch Truck Now',
+        };
+
+        await notificationService.send(alertData, io);
+        console.log(`   🚛 Post-confirm alert: ${booking.booking_number} - ${urgency}`);
+    }
+}
+
+// Helper: Get valid (non-NaN) deadlines sorted earliest first
+function getValidDeadlines(booking) {
+    return [
+        { type: 'SI', date: new Date(booking.cut_off_si) },
+        { type: 'VGM', date: new Date(booking.cut_off_vgm) },
+        { type: 'CY', date: new Date(booking.cut_off_cy) },
+    ]
+        .filter(d => !isNaN(d.date.getTime()))
+        .sort((a, b) => a.date - b.date);
+}
+
+// Helper: Determine which alert tier to send
+function determineAlert(booking, hoursUntil) {
+    let shouldAlert = false;
+    let alertType = null;
+    let priority = 'MEDIUM';
+
+    if (hoursUntil < 0 && !booking.alert_sent_overdue) {
+        shouldAlert = true;
+        alertType = 'overdue';
+        priority = 'CRITICAL';
+    } else if (hoursUntil <= 6 && hoursUntil > 0 && !booking.alert_sent_6h) {
+        shouldAlert = true;
+        alertType = '6h';
+        priority = 'CRITICAL';
+    } else if (hoursUntil <= 12 && hoursUntil > 6 && !booking.alert_sent_12h) {
+        shouldAlert = true;
+        alertType = '12h';
+        priority = 'HIGH';
+    } else if (hoursUntil <= 24 && hoursUntil > 12 && !booking.alert_sent_24h) {
+        shouldAlert = true;
+        alertType = '24h';
+        priority = 'MEDIUM';
+    } else if (hoursUntil <= 48 && hoursUntil > 24 && !booking.alert_sent_48h) {
+        shouldAlert = true;
+        alertType = '48h';
+        priority = 'LOW';
+    }
+
+    return { shouldAlert, alertType, priority };
+}
+
+// Helper: Mark alert as sent
+async function markAlertSent(deadlineId, alertType) {
+    const columnName = `alert_sent_${alertType}`;
+    await pool.query(
+        `UPDATE booking_deadlines 
+         SET ${columnName} = true, updated_at = NOW()
+         WHERE id = $1`,
+        [deadlineId]
+    );
 }
 
 function getAlertTitle(type, booking) {
@@ -111,22 +209,22 @@ function getAlertTitle(type, booking) {
     };
 
     const labels = {
-        overdue: 'QUÁ DEADLINE',
-        '6h': 'CÒN 6 GIỜ',
-        '12h': 'CÒN 12 GIỜ',
-        '24h': 'CÒN 24 GIỜ',
-        '48h': 'CÒN 48 GIỜ',
+        overdue: 'OVERDUE',
+        '6h': '6 HOURS LEFT',
+        '12h': '12 HOURS LEFT',
+        '24h': '24 HOURS LEFT',
+        '48h': '48 HOURS LEFT',
     };
 
     return `${icons[type]} ${labels[type]}: ${booking.booking_number}`;
 }
 
-function getAlertMessage(type, booking, hours, deadlineType) {
+function getPreConfirmMessage(type, booking, hours, deadlineType) {
     if (type === 'overdue') {
-        return `Booking đã quá deadline ${Math.abs(hours).toFixed(1)} giờ. Sales chưa confirm. CẦN HỦY BOOKING NGAY! (Cut-off ${deadlineType})`;
+        return `Booking is ${Math.abs(hours).toFixed(1)} hours past deadline. Sales has not confirmed. CANCEL BOOKING IMMEDIATELY! (Cut-off ${deadlineType})`;
     }
 
-    return `Còn ${hours.toFixed(1)} giờ đến Cut-off ${deadlineType}. Tuyến: ${booking.route || 'N/A'}. Tàu: ${booking.vessel_flight || 'N/A'}. Sales cần confirm sớm.`;
+    return `${hours.toFixed(1)} hours until Cut-off ${deadlineType}. Route: ${booking.route || 'N/A'}. Vessel: ${booking.vessel_flight || 'N/A'}. Sales needs to confirm soon.`;
 }
 
 module.exports = {

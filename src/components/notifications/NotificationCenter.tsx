@@ -95,7 +95,7 @@ export function NotificationCenter({ className }: NotificationCenterProps) {
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 border-b border-[hsl(var(--border))]">
                             <h3 className="font-semibold text-[hsl(var(--foreground))]">
-                                Thông Báo
+                                Notifications
                             </h3>
                             <div className="flex items-center gap-2">
                                 {unreadCount > 0 && (
@@ -103,7 +103,7 @@ export function NotificationCenter({ className }: NotificationCenterProps) {
                                         onClick={handleMarkAllRead}
                                         className="text-xs text-[hsl(var(--primary))] hover:underline"
                                     >
-                                        Đánh dấu tất cả đã đọc
+                                        Mark all as read
                                     </button>
                                 )}
                                 <button
@@ -119,12 +119,12 @@ export function NotificationCenter({ className }: NotificationCenterProps) {
                         <div className="flex-1 overflow-y-auto">
                             {loading ? (
                                 <div className="p-8 text-center text-[hsl(var(--muted-foreground))]">
-                                    Đang tải...
+                                    Loading...
                                 </div>
                             ) : notifications.length === 0 ? (
                                 <div className="p-8 text-center text-[hsl(var(--muted-foreground))]">
                                     <Bell className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                    <p>Không có thông báo</p>
+                                    <p>No notifications</p>
                                 </div>
                             ) : (
                                 notifications.map((notification) => (

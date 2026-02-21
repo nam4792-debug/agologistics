@@ -3,18 +3,18 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const badgeVariants = cva(
-    'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+    'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
     {
         variants: {
             variant: {
-                default: 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]',
-                secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]',
-                destructive: 'bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]',
+                default: 'bg-[hsl(var(--primary))]/12 text-[hsl(var(--primary))] border border-[hsl(var(--primary))]/15',
+                secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] border border-[hsl(var(--border))]/40',
+                destructive: 'bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))] border border-[hsl(var(--destructive))]/15',
                 outline: 'border border-[hsl(var(--border))] text-[hsl(var(--foreground))]',
-                success: 'bg-[hsl(var(--success))] text-white',
-                warning: 'bg-[hsl(var(--warning))] text-black',
-                info: 'bg-[hsl(var(--info))] text-black',
-                muted: 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]',
+                success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15',
+                warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/15',
+                info: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/15',
+                muted: 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] border border-[hsl(var(--border))]/30',
             },
         },
         defaultVariants: {
@@ -46,6 +46,7 @@ const statusVariantMap: Record<string, VariantProps<typeof badgeVariants>['varia
     ALLOCATED: 'secondary',
     USED: 'success',
     BOOKING_CONFIRMED: 'info',
+    BOOKED: 'info',
     DOCUMENTATION_IN_PROGRESS: 'warning',
     READY_TO_LOAD: 'info',
     LOADING: 'warning',

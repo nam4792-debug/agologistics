@@ -3,18 +3,21 @@ const router = express.Router();
 const pool = require('../config/database');
 const workflowService = require('../services/workflowService');
 const { authenticateToken } = require('./auth');
+const auditService = require('../services/auditService');
 
 // Get all truck dispatches
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
-        const { bookingId, status } = req.query;
+        const { bookingId, shipmentId, status } = req.query;
 
         let query = `
       SELECT td.*, 
-             b.booking_number,
+             b.booking_number, b.origin_port, b.destination_port, b.vessel_flight, b.shipping_line,
+             s.shipment_number,
              u.full_name as created_by_name
       FROM truck_dispatches td
       LEFT JOIN bookings b ON td.booking_id = b.id
+      LEFT JOIN shipments s ON b.shipment_id = s.id
       LEFT JOIN users u ON td.created_by = u.id
       WHERE 1=1
     `;
@@ -25,6 +28,11 @@ router.get('/', async (req, res) => {
         if (bookingId) {
             query += ` AND td.booking_id = $${paramIndex++}`;
             params.push(bookingId);
+        }
+
+        if (shipmentId) {
+            query += ` AND s.id = $${paramIndex++}`;
+            params.push(shipmentId);
         }
 
         if (status) {
@@ -43,14 +51,16 @@ router.get('/', async (req, res) => {
 });
 
 // Get single dispatch
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT td.*, 
-              b.booking_number, b.route, b.vessel_flight,
+              b.booking_number, b.route, b.vessel_flight, b.origin_port, b.destination_port, b.shipping_line,
+              s.shipment_number,
               u.full_name as created_by_name
        FROM truck_dispatches td
        LEFT JOIN bookings b ON td.booking_id = b.id
+       LEFT JOIN shipments s ON b.shipment_id = s.id
        LEFT JOIN users u ON td.created_by = u.id
        WHERE td.id = $1`,
             [req.params.id]
@@ -77,6 +87,13 @@ router.post('/', authenticateToken, async (req, res) => {
             io
         );
 
+        // Audit trail
+        auditService.log('dispatch', dispatch.id, 'CREATE', req.user?.userId || null, {
+            booking_id: req.body.bookingId,
+            truck_plate: req.body.truckPlate,
+            driver: req.body.driverName,
+        });
+
         res.status(201).json({
             message: 'Truck dispatched successfully',
             dispatch,
@@ -88,7 +105,7 @@ router.post('/', authenticateToken, async (req, res) => {
 });
 
 // Update dispatch status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', authenticateToken, async (req, res) => {
     try {
         const { status } = req.body;
         const validStatuses = ['SCHEDULED', 'EN_ROUTE', 'ARRIVED', 'LOADING', 'COMPLETED', 'CANCELLED'];
@@ -106,6 +123,11 @@ router.patch('/:id/status', async (req, res) => {
             return res.status(404).json({ error: 'Dispatch not found' });
         }
 
+        // Audit trail
+        auditService.log('dispatch', req.params.id, 'STATUS_CHANGE', req.user?.userId || null, {
+            status: { new: status },
+        });
+
         res.json({ dispatch: rows[0] });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -113,7 +135,7 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // Update dispatch
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
     try {
         const {
             truckCompany,
@@ -153,6 +175,11 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Dispatch not found' });
         }
 
+        // Audit trail
+        auditService.log('dispatch', req.params.id, 'UPDATE', req.user?.userId || null, {
+            updated_fields: Object.keys(req.body),
+        });
+
         res.json({ dispatch: rows[0] });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
@@ -160,7 +187,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete dispatch
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             'DELETE FROM truck_dispatches WHERE id = $1 RETURNING id',
@@ -170,6 +197,9 @@ router.delete('/:id', async (req, res) => {
         if (rows.length === 0) {
             return res.status(404).json({ error: 'Dispatch not found' });
         }
+
+        // Audit trail
+        auditService.log('dispatch', req.params.id, 'DELETE', req.user?.userId || null, {});
 
         res.json({ message: 'Dispatch deleted' });
     } catch (error) {

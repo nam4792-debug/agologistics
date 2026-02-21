@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Anchor, Plane, Loader2, Ship } from 'lucide-react';
 import { Button, Input, Select } from '@/components/ui';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface NewBookingModalProps {
     isOpen: boolean;
@@ -24,29 +24,38 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
     const [error, setError] = useState<string | null>(null);
     const [forwarders, setForwarders] = useState<Array<{ value: string; label: string }>>([]);
 
+    const isAir = bookingType === 'AIR';
+
     const [formData, setFormData] = useState({
         forwarderId: '',
         vesselFlight: '',
         voyageNumber: '',
-        // POL/POD as free text
         originPort: '',
         destinationPort: '',
-        // Container
+        // FCL fields
         containerType: '40GP',
         containerCount: '1',
+        // Air fields
+        airline: '',
+        mawbNumber: '',
+        pieces: '',
+        weight: '',
+        cbm: '',
         // Cargo
         cargoDescription: '',
-        weight: '',
         // Schedule
         etd: '',
         eta: '',
-        // Deadlines
+        // Deadlines — FCL: SI/VGM/CY | Air: Cargo Acceptance / Doc
         cutOffSI: '',
         cutOffVGM: '',
         cutOffCY: '',
+        cutOffCargoAcceptance: '',
+        cutOffDoc: '',
         // Cost
         freightRate: '',
         notes: '',
+        shippingLine: '',
     });
 
     useEffect(() => {
@@ -57,8 +66,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
 
     const loadForwarders = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/bookings/forwarders`);
-            const data = await response.json();
+            const data = await fetchApi('/api/bookings/forwarders');
             if (data.forwarders) {
                 setForwarders(data.forwarders.map((f: { id: string; company_name: string }) => ({
                     value: f.id,
@@ -66,10 +74,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                 })));
             }
         } catch (e) {
-            setForwarders([
-                { value: 'fwd-001', label: 'ABC Logistics' },
-                { value: 'fwd-002', label: 'Global Shipping Co' },
-            ]);
+            setForwarders([]);
         }
     };
 
@@ -82,8 +87,14 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
         e.preventDefault();
 
         // Validate required fields
-        if (!formData.originPort || !formData.destinationPort || !formData.etd || !formData.cutOffCY) {
-            setError('Please fill in: Origin Port, Destination Port, ETD, and CY Cut-off');
+        if (!formData.originPort || !formData.destinationPort || !formData.etd) {
+            setError(`Please fill in: ${isAir ? 'Airport of Loading' : 'Origin Port'}, ${isAir ? 'Airport of Discharge' : 'Destination Port'}, and ETD`);
+            return;
+        }
+
+        // Additional validation per type
+        if (!isAir && !formData.cutOffCY) {
+            setError('Please fill in CY Cut-off date');
             return;
         }
 
@@ -93,34 +104,56 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
         try {
             const bookingNumber = `BK-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
 
-            const payload = {
+            const payload: Record<string, unknown> = {
                 booking_number: bookingNumber,
                 forwarder_id: formData.forwarderId || null,
                 type: bookingType,
-                vessel_flight: formData.vesselFlight,
-                voyage_number: formData.voyageNumber,
                 route: `${formData.originPort} → ${formData.destinationPort}`,
                 origin_port: formData.originPort,
                 destination_port: formData.destinationPort,
-                container_type: bookingType === 'FCL' ? formData.containerType : null,
-                container_count: parseInt(formData.containerCount) || 1,
-                cargo_description: formData.cargoDescription,
                 etd: formData.etd,
                 eta: formData.eta || null,
                 freight_rate_usd: parseFloat(formData.freightRate) || 0,
+                cargo_description: formData.cargoDescription || null,
                 notes: formData.notes || null,
-                cut_off_si: formData.cutOffSI || null,
-                cut_off_vgm: formData.cutOffVGM || null,
-                cut_off_cy: formData.cutOffCY,
             };
 
-            const response = await fetch(`${API_URL}/api/bookings`, {
+            if (isAir) {
+                // Air-specific fields
+                payload.vessel_flight = formData.vesselFlight; // Flight number
+                payload.voyage_number = formData.voyageNumber || null;
+                payload.shipping_line = formData.airline || null; // Store airline in shipping_line column
+                payload.container_type = null;
+                payload.container_count = parseInt(formData.pieces) || 1;
+                // Store Air cut-offs: cargo acceptance → cut_off_cy, doc → cut_off_si
+                payload.cut_off_cy = formData.cutOffCargoAcceptance || null;
+                payload.cut_off_si = formData.cutOffDoc || null;
+                payload.cut_off_vgm = null;
+                // Store weight/cbm/mawb in notes for now
+                const airMeta: string[] = [];
+                if (formData.mawbNumber) airMeta.push(`MAWB: ${formData.mawbNumber}`);
+                if (formData.weight) airMeta.push(`Weight: ${formData.weight}kg`);
+                if (formData.cbm) airMeta.push(`Volume: ${formData.cbm}cbm`);
+                if (airMeta.length > 0) {
+                    payload.notes = [airMeta.join(' | '), formData.notes].filter(Boolean).join('\n');
+                }
+            } else {
+                // FCL-specific fields
+                payload.vessel_flight = formData.vesselFlight;
+                payload.voyage_number = formData.voyageNumber;
+                payload.shipping_line = formData.shippingLine || null;
+                payload.container_type = formData.containerType;
+                payload.container_count = parseInt(formData.containerCount) || 1;
+                payload.cut_off_si = formData.cutOffSI || null;
+                payload.cut_off_vgm = formData.cutOffVGM || null;
+                payload.cut_off_cy = formData.cutOffCY;
+            }
+
+            const result = await fetchApi('/api/bookings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
-
-            const result = await response.json();
 
             if (result.error) {
                 throw new Error(result.error);
@@ -139,15 +172,22 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                 destinationPort: '',
                 containerType: '40GP',
                 containerCount: '1',
-                cargoDescription: '',
+                airline: '',
+                mawbNumber: '',
+                pieces: '',
                 weight: '',
+                cbm: '',
+                cargoDescription: '',
                 etd: '',
                 eta: '',
                 cutOffSI: '',
                 cutOffVGM: '',
                 cutOffCY: '',
+                cutOffCargoAcceptance: '',
+                cutOffDoc: '',
                 freightRate: '',
                 notes: '',
+                shippingLine: '',
             });
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create booking');
@@ -166,16 +206,16 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                 onClick={onClose}
             />
 
-            {/* Modal - Wide for table layout */}
+            {/* Modal */}
             <div className="relative bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden animate-fade-in">
                 {/* Header */}
                 <div className="flex items-center justify-between p-5 border-b border-[hsl(var(--border))]">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${bookingType === 'FCL' ? 'gradient-primary' : 'bg-gradient-to-br from-purple-500 to-pink-500'}`}>
-                            {bookingType === 'FCL' ? (
-                                <Anchor className="w-5 h-5 text-white" />
-                            ) : (
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isAir ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'gradient-primary'}`}>
+                            {isAir ? (
                                 <Plane className="w-5 h-5 text-white" />
+                            ) : (
+                                <Anchor className="w-5 h-5 text-white" />
                             )}
                         </div>
                         <div>
@@ -183,7 +223,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                                 New {bookingType} Booking
                             </h2>
                             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                All fields in table layout
+                                {isAir ? 'Create a new air freight booking' : 'Create a new container booking'}
                             </p>
                         </div>
                     </div>
@@ -195,7 +235,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                     </button>
                 </div>
 
-                {/* Form - Table Layout */}
+                {/* Form */}
                 <form onSubmit={handleSubmit} className="p-5 overflow-y-auto max-h-[calc(90vh-140px)]">
                     {error && (
                         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
@@ -203,34 +243,53 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                         </div>
                     )}
 
-                    {/* Table-like Grid Layout */}
                     <div className="bg-[hsl(var(--secondary))]/50 rounded-xl p-4 border border-[hsl(var(--border))]">
 
-                        {/* Row 1: Vessel/Flight & Voyage & Forwarder */}
+                        {/* Row 1: Carrier/Vessel + Route + Forwarder */}
                         <div className="grid grid-cols-4 gap-3 mb-4">
                             <div>
                                 <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                    {bookingType === 'FCL' ? 'Vessel Name' : 'Flight'}
+                                    {isAir ? 'Flight Number' : 'Vessel Name'}
                                 </label>
                                 <Input
                                     value={formData.vesselFlight}
                                     onChange={(e) => handleChange('vesselFlight', e.target.value)}
-                                    placeholder={bookingType === 'FCL' ? 'EVER GIVEN' : 'VN1234'}
+                                    placeholder={isAir ? 'VN1234 / CX892' : 'EVER GIVEN'}
                                     className="h-9"
                                 />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                    Voyage/Route
+                                    {isAir ? 'Route Code' : 'Voyage Number'}
                                 </label>
                                 <Input
                                     value={formData.voyageNumber}
                                     onChange={(e) => handleChange('voyageNumber', e.target.value)}
-                                    placeholder="V.2609E"
+                                    placeholder={isAir ? 'SGN-NRT' : 'V.2609E'}
                                     className="h-9"
                                 />
                             </div>
-                            <div className="col-span-2">
+                            <div>
+                                <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                    {isAir ? 'Airline / Carrier' : 'Shipping Line'}
+                                </label>
+                                {isAir ? (
+                                    <Input
+                                        value={formData.airline}
+                                        onChange={(e) => handleChange('airline', e.target.value)}
+                                        placeholder="Vietnam Airlines, Cathay..."
+                                        className="h-9"
+                                    />
+                                ) : (
+                                    <Input
+                                        value={formData.shippingLine}
+                                        onChange={(e) => handleChange('shippingLine', e.target.value)}
+                                        placeholder="Evergreen, MSC, Maersk..."
+                                        className="h-9"
+                                    />
+                                )}
+                            </div>
+                            <div>
                                 <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
                                     Forwarder
                                 </label>
@@ -242,34 +301,86 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                             </div>
                         </div>
 
-                        {/* Row 2: POL & POD - FREE TEXT */}
+                        {/* Row 2: Origin & Destination — POL/POD for FCL, AOL/AOD for Air */}
                         <div className="grid grid-cols-2 gap-3 mb-4">
                             <div>
                                 <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                    Origin Port (POL) *
+                                    {isAir ? 'Airport of Loading (AOL) *' : 'Port of Loading (POL) *'}
                                 </label>
                                 <Input
                                     value={formData.originPort}
                                     onChange={(e) => handleChange('originPort', e.target.value)}
-                                    placeholder="Ho Chi Minh City, Cat Lai, Hai Phong..."
+                                    placeholder={isAir ? 'SGN — Tan Son Nhat, HAN — Noi Bai...' : 'VNCLI — Cat Lai, VNHPH — Hai Phong...'}
                                     className="h-9"
                                 />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                    Destination Port (POD) *
+                                    {isAir ? 'Airport of Discharge (AOD) *' : 'Port of Discharge (POD) *'}
                                 </label>
                                 <Input
                                     value={formData.destinationPort}
                                     onChange={(e) => handleChange('destinationPort', e.target.value)}
-                                    placeholder="Chennai, Tokyo, Singapore..."
+                                    placeholder={isAir ? 'NRT — Narita, SIN — Changi...' : 'INMAA — Chennai, JPTYO — Tokyo...'}
                                     className="h-9"
                                 />
                             </div>
                         </div>
 
-                        {/* Row 3: Container & Cargo (FCL only) */}
-                        {bookingType === 'FCL' && (
+                        {/* Row 3: FCL → Container | Air → Pieces/Weight/CBM/MAWB */}
+                        {isAir ? (
+                            <div className="grid grid-cols-4 gap-3 mb-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                        MAWB Number
+                                    </label>
+                                    <Input
+                                        value={formData.mawbNumber}
+                                        onChange={(e) => handleChange('mawbNumber', e.target.value)}
+                                        placeholder="180-12345678"
+                                        className="h-9"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                        Pieces (pcs)
+                                    </label>
+                                    <Input
+                                        type="number"
+                                        value={formData.pieces}
+                                        onChange={(e) => handleChange('pieces', e.target.value)}
+                                        placeholder="100"
+                                        min="1"
+                                        className="h-9"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                        Gross Weight (kg)
+                                    </label>
+                                    <Input
+                                        type="number"
+                                        value={formData.weight}
+                                        onChange={(e) => handleChange('weight', e.target.value)}
+                                        placeholder="500"
+                                        className="h-9"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                        Volume (CBM)
+                                    </label>
+                                    <Input
+                                        type="number"
+                                        value={formData.cbm}
+                                        onChange={(e) => handleChange('cbm', e.target.value)}
+                                        placeholder="2.5"
+                                        step="0.1"
+                                        className="h-9"
+                                    />
+                                </div>
+                            </div>
+                        ) : (
                             <div className="grid grid-cols-4 gap-3 mb-4">
                                 <div>
                                     <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
@@ -308,7 +419,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                         )}
 
                         {/* Row 4: Schedule */}
-                        <div className="grid grid-cols-4 gap-3 mb-4">
+                        <div className="grid grid-cols-3 gap-3 mb-4">
                             <div>
                                 <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
                                     ETD *
@@ -339,63 +450,81 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                                     type="number"
                                     value={formData.freightRate}
                                     onChange={(e) => handleChange('freightRate', e.target.value)}
-                                    placeholder="0"
-                                    className="h-9"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                    Weight (kg)
-                                </label>
-                                <Input
-                                    type="number"
-                                    value={formData.weight}
-                                    onChange={(e) => handleChange('weight', e.target.value)}
-                                    placeholder="0"
+                                    placeholder={isAir ? 'per kg' : 'per container'}
                                     className="h-9"
                                 />
                             </div>
                         </div>
 
-                        {/* Row 5: Deadlines - IMPORTANT */}
-                        <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 mb-4">
-                            <p className="text-xs font-semibold text-yellow-400 mb-2">⚠️ CUT-OFF DEADLINES</p>
-                            <div className="grid grid-cols-3 gap-3">
-                                <div>
-                                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                        SI Cut-off
-                                    </label>
-                                    <Input
-                                        type="datetime-local"
-                                        value={formData.cutOffSI}
-                                        onChange={(e) => handleChange('cutOffSI', e.target.value)}
-                                        className="h-9"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                        VGM Cut-off
-                                    </label>
-                                    <Input
-                                        type="datetime-local"
-                                        value={formData.cutOffVGM}
-                                        onChange={(e) => handleChange('cutOffVGM', e.target.value)}
-                                        className="h-9"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
-                                        CY Cut-off (Cargo) *
-                                    </label>
-                                    <Input
-                                        type="datetime-local"
-                                        value={formData.cutOffCY}
-                                        onChange={(e) => handleChange('cutOffCY', e.target.value)}
-                                        className="h-9"
-                                    />
+                        {/* Row 5: Deadlines — different for FCL vs Air */}
+                        {isAir ? (
+                            <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/30 mb-4">
+                                <p className="text-xs font-semibold text-purple-400 mb-2">✈️ AIR FREIGHT CUT-OFFS</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                            Cargo Acceptance Cut-off
+                                        </label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={formData.cutOffCargoAcceptance}
+                                            onChange={(e) => handleChange('cutOffCargoAcceptance', e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                            Document Cut-off
+                                        </label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={formData.cutOffDoc}
+                                            onChange={(e) => handleChange('cutOffDoc', e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 mb-4">
+                                <p className="text-xs font-semibold text-yellow-400 mb-2">⚠️ OCEAN CUT-OFF DEADLINES</p>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                            SI Cut-off
+                                        </label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={formData.cutOffSI}
+                                            onChange={(e) => handleChange('cutOffSI', e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                            VGM Cut-off
+                                        </label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={formData.cutOffVGM}
+                                            onChange={(e) => handleChange('cutOffVGM', e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                            CY Cut-off (Cargo) *
+                                        </label>
+                                        <Input
+                                            type="datetime-local"
+                                            value={formData.cutOffCY}
+                                            onChange={(e) => handleChange('cutOffCY', e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Row 6: Notes */}
                         <div>
@@ -426,7 +555,7 @@ export function NewBookingModal({ isOpen, onClose, onSuccess, bookingType }: New
                             </>
                         ) : (
                             <>
-                                {bookingType === 'FCL' ? <Ship className="w-4 h-4 mr-2" /> : <Plane className="w-4 h-4 mr-2" />}
+                                {isAir ? <Plane className="w-4 h-4 mr-2" /> : <Ship className="w-4 h-4 mr-2" />}
                                 Create Booking
                             </>
                         )}

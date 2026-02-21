@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface DispatchModalProps {
     isOpen: boolean;
@@ -56,8 +56,8 @@ export function DispatchModal({ isOpen, onClose, onSuccess, bookingId, bookingNu
         sealNumber: '',
         pickupDate: '',
         pickupTime: '',
-        pickupLocation: 'Depot ICD Tân Thuận, Q.7, HCM',
-        deliveryLocation: 'Cảng Cát Lái, Q.2, HCM',
+        pickupLocation: 'ICD Tan Thuan Depot, Dist.7, HCM',
+        deliveryLocation: 'Cat Lai Port, Dist.2, HCM',
         notes: '',
     });
 
@@ -96,20 +96,15 @@ export function DispatchModal({ isOpen, onClose, onSuccess, bookingId, bookingNu
                 notes: formData.notes,
             };
 
-            const response = await fetch(`${API_URL}/api/dispatches`, {
+            await fetchApi('/api/dispatches', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
 
-            if (response.ok) {
-                toast.success('Dispatch scheduled successfully!');
-                onSuccess?.();
-                onClose();
-            } else {
-                const data = await response.json();
-                toast.error(data.error || 'Failed to create dispatch');
-            }
+            toast.success('Dispatch scheduled successfully!');
+            onSuccess?.();
+            onClose();
         } catch (error) {
             // Demo mode - show success
             toast.success('Dispatch scheduled successfully! (Demo mode)');
@@ -263,14 +258,14 @@ export function DispatchModal({ isOpen, onClose, onSuccess, bookingId, bookingNu
                                 />
                                 <Input
                                     label="Pickup Location"
-                                    placeholder="Depot ICD Tân Thuận"
+                                    placeholder="ICD Tan Thuan Depot"
                                     value={formData.pickupLocation}
                                     onChange={(e) => handleInputChange('pickupLocation', e.target.value)}
                                     icon={<MapPin className="w-4 h-4" />}
                                 />
                                 <Input
                                     label="Delivery Location"
-                                    placeholder="Cảng Cát Lái"
+                                    placeholder="Cat Lai Port"
                                     value={formData.deliveryLocation}
                                     onChange={(e) => handleInputChange('deliveryLocation', e.target.value)}
                                     icon={<MapPin className="w-4 h-4" />}

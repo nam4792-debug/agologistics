@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { X, Building, Loader2, User, Mail, Phone, MapPin } from 'lucide-react';
+import { X, Building, Loader2, User, Mail, Phone, MapPin, CreditCard } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface NewVendorModalProps {
     isOpen: boolean;
@@ -20,6 +20,7 @@ export function NewVendorModal({ isOpen, onClose, onSuccess }: NewVendorModalPro
         email: '',
         phone: '',
         address: '',
+        credit_limit_monthly: '',
     });
 
     const handleChange = (field: string, value: string) => {
@@ -39,17 +40,11 @@ export function NewVendorModal({ isOpen, onClose, onSuccess }: NewVendorModalPro
         setError(null);
 
         try {
-            const response = await fetch(`${API_URL}/api/providers`, {
+            await fetchApi('/api/providers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Failed to create vendor');
-            }
 
             toast.success(`Vendor "${formData.company_name}" created!`);
             onSuccess?.();
@@ -62,6 +57,7 @@ export function NewVendorModal({ isOpen, onClose, onSuccess }: NewVendorModalPro
                 email: '',
                 phone: '',
                 address: '',
+                credit_limit_monthly: '',
             });
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create vendor');
@@ -173,6 +169,25 @@ export function NewVendorModal({ isOpen, onClose, onSuccess }: NewVendorModalPro
                             placeholder="123 Nguyen Hue, District 1, HCMC"
                             className="w-full"
                         />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-[hsl(var(--foreground))] mb-1">
+                            <CreditCard className="w-4 h-4 inline mr-2" />
+                            Monthly Credit Limit (USD)
+                        </label>
+                        <Input
+                            type="number"
+                            value={formData.credit_limit_monthly}
+                            onChange={(e) => handleChange('credit_limit_monthly', e.target.value)}
+                            placeholder="50000"
+                            className="w-full"
+                            min="0"
+                            step="1000"
+                        />
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+                            Set to 0 or leave empty for no limit
+                        </p>
                     </div>
                 </form>
 

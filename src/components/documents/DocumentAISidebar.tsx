@@ -17,7 +17,7 @@ import {
 import { Button, Badge } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface DocumentAISidebarProps {
     isOpen: boolean;
@@ -83,21 +83,13 @@ export function DocumentAISidebar({ isOpen, onClose, document }: DocumentAISideb
         setResult(null);
 
         try {
-            const response = await fetch(`${API_URL}/api/ai/analyze-document`, {
+            const data = await fetchApi('/api/ai/analyze-document', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ documentId: document.id }),
             });
-
-            if (response.ok) {
-                const data = await response.json();
-                setResult(data.analysis);
-                toast.success('AI analysis complete!');
-            } else {
-                // Mock result for demo
-                setResult(getMockAnalysisResult());
-                toast.success('AI analysis complete! (Demo mode)');
-            }
+            setResult(data.analysis);
+            toast.success('AI analysis complete!');
         } catch (error) {
             // Use mock for demo
             setResult(getMockAnalysisResult());
@@ -116,7 +108,7 @@ export function DocumentAISidebar({ isOpen, onClose, document }: DocumentAISideb
         setChatLoading(true);
 
         try {
-            const response = await fetch(`${API_URL}/api/ai/chat`, {
+            const data = await fetchApi('/api/ai/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -125,15 +117,7 @@ export function DocumentAISidebar({ isOpen, onClose, document }: DocumentAISideb
                     context: result
                 }),
             });
-
-            if (response.ok) {
-                const data = await response.json();
-                setChatMessages(prev => [...prev, { role: 'ai', content: data.response }]);
-            } else {
-                // Mock response for demo
-                const mockResponse = getMockChatResponse(userMessage);
-                setChatMessages(prev => [...prev, { role: 'ai', content: mockResponse }]);
-            }
+            setChatMessages(prev => [...prev, { role: 'ai', content: data.response }]);
         } catch (error) {
             const mockResponse = getMockChatResponse(userMessage);
             setChatMessages(prev => [...prev, { role: 'ai', content: mockResponse }]);

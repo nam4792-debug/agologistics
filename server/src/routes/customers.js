@@ -2,9 +2,12 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
+const { authenticateToken } = require('./auth');
+const auditService = require('../services/auditService');
+const { validate, RULES, DELETE_GUARDS } = require('../middleware/validator');
 
 // Get all customers
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT 
@@ -27,7 +30,7 @@ router.get('/', async (req, res) => {
 });
 
 // Get single customer
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT 
@@ -68,7 +71,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create customer
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, validate(RULES.customer.create), async (req, res) => {
     try {
         const { company_name, contact_name, email, phone, country } = req.body;
 
@@ -84,6 +87,11 @@ router.post('/', async (req, res) => {
             VALUES ($1, $2, $3, $4, $5, $6, $7)
         `, [id, code, company_name, contact_name || null, email || null, phone || null, country || null]);
 
+        // Audit trail
+        auditService.log('customer', id, 'CREATE', req.user?.userId || null, {
+            name: company_name,
+        });
+
         res.status(201).json({
             success: true,
             customer: { id, code, name: company_name, contact: contact_name, email, phone, country }
@@ -95,7 +103,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update customer
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         const { company_name, contact_name, email, phone, country } = req.body;
@@ -123,6 +131,11 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Customer not found' });
         }
 
+        // Audit trail
+        auditService.log('customer', id, 'UPDATE', req.user?.userId || null, {
+            updated_fields: Object.keys(req.body),
+        });
+
         res.json({ success: true, message: 'Customer updated' });
     } catch (error) {
         console.error('Error updating customer:', error);
@@ -131,13 +144,28 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete customer
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
+        // BUG-14: Check for linked shipments before deleting
+        const { rows: linkedShipments } = await pool.query(
+            'SELECT COUNT(*) as count FROM shipments WHERE customer_id = $1',
+            [req.params.id]
+        );
+        if (parseInt(linkedShipments[0].count) > 0) {
+            return res.status(400).json({
+                error: 'Cannot delete this customer',
+                message: `This customer has ${linkedShipments[0].count} linked shipment(s). Remove or reassign them first.`
+            });
+        }
+
         const result = await pool.query('DELETE FROM customers WHERE id = $1', [req.params.id]);
 
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Customer not found' });
         }
+
+        // Audit trail
+        auditService.log('customer', req.params.id, 'DELETE', req.user?.userId || null, {});
 
         res.json({ success: true, message: 'Customer deleted' });
     } catch (error) {

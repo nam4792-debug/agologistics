@@ -1,37 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import {
-    Ship,
-    Plane,
-    ArrowLeft,
-    FileText,
-    DollarSign,
-    AlertTriangle,
-    Package,
-    MapPin,
-    User,
-    Building,
-    Upload,
-    CheckCircle,
-    Circle,
-    Loader2,
-    RefreshCw,
-    X,
-    Save,
-    Edit,
-    Download,
-    Plus,
-    Trash2,
-} from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, Badge, Input, Select } from '@/components/ui';
 import { formatCurrency, formatDate, formatWeight, cn } from '@/lib/utils';
+import { ShipmentAIPanel } from '@/components/logistics';
 import type { ShipmentStatus } from '@/types';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { API_URL, fetchApi } from '@/lib/api';
 
 const statusLabels: Record<string, string> = {
     DRAFT: 'Draft',
     BOOKING_CONFIRMED: 'Booking Confirmed',
+    BOOKED: 'Booked',
     DOCUMENTATION_IN_PROGRESS: 'Documentation In Progress',
     READY_TO_LOAD: 'Ready to Load',
     LOADING: 'Loading',
@@ -56,7 +36,7 @@ const documentTypeLabels: Record<string, string> = {
 
 const statusFlow: ShipmentStatus[] = [
     'DRAFT',
-    'BOOKING_CONFIRMED',
+    'BOOKED',
     'DOCUMENTATION_IN_PROGRESS',
     'READY_TO_LOAD',
     'LOADING',
@@ -113,7 +93,9 @@ interface DocumentData {
 }
 
 function getStatusIndex(status: string): number {
-    return statusFlow.indexOf(status as ShipmentStatus);
+    // Map legacy status to current flow
+    const mappedStatus = status === 'BOOKING_CONFIRMED' ? 'BOOKED' : status;
+    return statusFlow.indexOf(mappedStatus as ShipmentStatus);
 }
 
 export function ShipmentDetail() {
@@ -124,6 +106,7 @@ export function ShipmentDetail() {
     const [showEditModal, setShowEditModal] = useState(false);
     const [saving, setSaving] = useState(false);
     const [editData, setEditData] = useState<Partial<ShipmentData>>({});
+    const [customers, setCustomers] = useState<Array<{ value: string; label: string }>>([]);
 
     // Upload modal state
     const [showUploadModal, setShowUploadModal] = useState(false);
@@ -134,13 +117,10 @@ export function ShipmentDetail() {
         if (!id) return;
         setLoading(true);
         try {
-            const [shipmentRes, docsRes] = await Promise.all([
-                fetch(`${API_URL}/api/shipments/${id}`),
-                fetch(`${API_URL}/api/documents?shipmentId=${id}`),
+            const [shipmentData, docsData] = await Promise.all([
+                fetchApi(`/api/shipments/${id}`),
+                fetchApi(`/api/documents?shipmentId=${id}`),
             ]);
-
-            const shipmentData = await shipmentRes.json();
-            const docsData = await docsRes.json();
 
             if (shipmentData.shipment) {
                 setShipment(shipmentData.shipment);
@@ -160,6 +140,24 @@ export function ShipmentDetail() {
         fetchShipment();
     }, [id]);
 
+    // Fetch customers for dropdown
+    useEffect(() => {
+        const loadCustomers = async () => {
+            try {
+                const data = await fetchApi('/api/customers');
+                if (data.customers) {
+                    setCustomers(data.customers.map((c: any) => ({
+                        value: c.id,
+                        label: `${c.name || c.company_name}${(c.code || c.customer_code) ? ` (${c.code || c.customer_code})` : ''}`,
+                    })));
+                }
+            } catch (e) {
+                console.error('Failed to load customers:', e);
+            }
+        };
+        loadCustomers();
+    }, []);
+
     // Open edit modal if ?edit=true in URL
     const location = useLocation();
     useEffect(() => {
@@ -172,6 +170,7 @@ export function ShipmentDetail() {
     const openEditModal = () => {
         if (shipment) {
             setEditData({
+                customer_id: shipment.customer_id,
                 status: shipment.status,
                 origin_port: shipment.origin_port,
                 destination_port: shipment.destination_port,
@@ -195,21 +194,16 @@ export function ShipmentDetail() {
         if (!id) return;
         setSaving(true);
         try {
-            const res = await fetch(`${API_URL}/api/shipments/${id}`, {
+            await fetchApi(`/api/shipments/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(editData),
             });
-            if (res.ok) {
-                toast.success('Shipment updated successfully!');
-                setShowEditModal(false);
-                fetchShipment();
-            } else {
-                toast.error('Failed to update shipment');
-            }
-        } catch (error) {
+            toast.success('Shipment updated successfully!');
+            setShowEditModal(false);
+            fetchShipment();
+        } catch (error: any) {
             console.error('Error updating shipment:', error);
-            toast.error('Error updating shipment');
+            toast.error(error?.message || 'Error updating shipment');
         } finally {
             setSaving(false);
         }
@@ -218,19 +212,14 @@ export function ShipmentDetail() {
     const handleStatusChange = async (newStatus: string) => {
         if (!id) return;
         try {
-            const res = await fetch(`${API_URL}/api/shipments/${id}/status`, {
+            await fetchApi(`/api/shipments/${id}/status`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus }),
             });
-            if (res.ok) {
-                toast.success(`Status changed to ${statusLabels[newStatus] || newStatus}`);
-                fetchShipment();
-            } else {
-                toast.error('Failed to update status');
-            }
-        } catch (error) {
-            toast.error('Error updating status');
+            toast.success(`Status changed to ${statusLabels[newStatus] || newStatus}`);
+            fetchShipment();
+        } catch (error: any) {
+            toast.error(error?.message || 'Error updating status');
         }
     };
 
@@ -274,8 +263,18 @@ export function ShipmentDetail() {
                 formData.append('documentType', fileData.type);
                 formData.append('documentName', fileData.name);
 
+                // Use raw fetch for file upload (fetchApi sets Content-Type: application/json)
+                const token = localStorage.getItem('logispro-auth');
+                let authToken = '';
+                if (token) {
+                    try {
+                        const parsed = JSON.parse(token);
+                        authToken = parsed?.state?.token || '';
+                    } catch { /* ignore */ }
+                }
                 await fetch(`${API_URL}/api/documents/upload`, {
                     method: 'POST',
+                    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
                     body: formData,
                 });
             }
@@ -293,7 +292,7 @@ export function ShipmentDetail() {
     if (loading) {
         return (
             <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--primary))]" />
+                <Loader2 className="w-6 h-6 animate-spin text-[hsl(var(--primary))]" />
             </div>
         );
     }
@@ -301,14 +300,12 @@ export function ShipmentDetail() {
     if (!shipment) {
         return (
             <div className="text-center py-20">
-                <Ship className="w-16 h-16 mx-auto text-[hsl(var(--muted-foreground))] mb-4" />
                 <h2 className="text-2xl font-bold text-[hsl(var(--foreground))]">Shipment not found</h2>
-                <p className="text-[hsl(var(--muted-foreground))] mt-2">
+                <p className="text-sm text-[hsl(var(--muted-foreground))] mt-2">
                     The shipment you're looking for doesn't exist.
                 </p>
                 <Link to="/shipments">
-                    <Button className="mt-4">
-                        <ArrowLeft className="w-4 h-4 mr-2" />
+                    <Button className="mt-4" size="sm">
                         Back to Shipments
                     </Button>
                 </Link>
@@ -325,38 +322,35 @@ export function ShipmentDetail() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                 <div className="flex items-center gap-4">
                     <Link to="/shipments">
-                        <Button variant="ghost" size="icon">
-                            <ArrowLeft className="w-5 h-5" />
+                        <Button variant="ghost" size="sm" className="text-sm">
+                            ← Back
                         </Button>
                     </Link>
                     <div>
                         <div className="flex items-center gap-3">
-                            <h1 className="text-3xl font-bold text-[hsl(var(--foreground))]">
+                            <h1 className="text-2xl font-bold text-[hsl(var(--foreground))] tracking-tight">
                                 {shipment.shipment_number}
                             </h1>
                             <span className={cn(
-                                'inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium',
+                                'inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide',
                                 shipment.type === 'FCL'
                                     ? 'bg-blue-500/10 text-blue-400'
                                     : 'bg-purple-500/10 text-purple-400'
                             )}>
-                                {shipment.type === 'FCL' ? <Ship className="w-3 h-3" /> : <Plane className="w-3 h-3" />}
                                 {shipment.type}
                             </span>
                             <StatusBadge status={shipment.status} />
                         </div>
-                        <p className="text-[hsl(var(--muted-foreground))] mt-1">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-0.5">
                             {shipment.cargo_description || 'No cargo description'}
                         </p>
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={fetchShipment}>
-                        <RefreshCw className="w-4 h-4 mr-2" />
+                    <Button variant="outline" size="sm" onClick={fetchShipment}>
                         Refresh
                     </Button>
-                    <Button onClick={openEditModal}>
-                        <Edit className="w-4 h-4 mr-2" />
+                    <Button size="sm" onClick={openEditModal}>
                         Edit Shipment
                     </Button>
                 </div>
@@ -393,13 +387,13 @@ export function ShipmentDetail() {
                                     title={canAdvance ? `Click to advance to ${statusLabels[status]}` : ''}
                                 >
                                     <div className={cn(
-                                        'w-8 h-8 rounded-full flex items-center justify-center mb-2 transition-all',
+                                        'w-7 h-7 rounded-full flex items-center justify-center mb-2 transition-all text-xs font-bold',
                                         isCompleted && 'bg-green-500 text-white',
                                         isCurrent && 'bg-[hsl(var(--primary))] text-white',
                                         canAdvance && 'bg-yellow-500/50 text-yellow-300 ring-2 ring-yellow-400 animate-pulse',
                                         !isCompleted && !isCurrent && !canAdvance && 'bg-[hsl(var(--secondary))] text-[hsl(var(--muted-foreground))]'
                                     )}>
-                                        {isCompleted ? <CheckCircle className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+                                        {index + 1}
                                     </div>
                                     <span className={cn(
                                         'text-xs text-center',
@@ -421,8 +415,7 @@ export function ShipmentDetail() {
                     {/* Shipment Details */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Package className="w-5 h-5" />
+                            <CardTitle>
                                 Shipment Details
                             </CardTitle>
                         </CardHeader>
@@ -431,18 +424,18 @@ export function ShipmentDetail() {
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Container</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.container_number || '—'}
+                                        {shipment.container_number || 'N/A'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Container Type</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.container_type || '—'}
+                                        {shipment.container_type || 'N/A'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Incoterm</p>
-                                    <p className="font-medium text-[hsl(var(--foreground))]">{shipment.incoterm || '—'}</p>
+                                    <p className="font-medium text-[hsl(var(--foreground))]">{shipment.incoterm || 'N/A'}</p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Container Count</p>
@@ -451,13 +444,13 @@ export function ShipmentDetail() {
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Weight</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.cargo_weight_kg ? formatWeight(shipment.cargo_weight_kg) : '—'}
+                                        {shipment.cargo_weight_kg ? formatWeight(shipment.cargo_weight_kg) : 'N/A'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Volume</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.cargo_volume_cbm ? `${shipment.cargo_volume_cbm} CBM` : '—'}
+                                        {shipment.cargo_volume_cbm ? `${shipment.cargo_volume_cbm} CBM` : 'N/A'}
                                     </p>
                                 </div>
                             </div>
@@ -467,8 +460,7 @@ export function ShipmentDetail() {
                     {/* Route & Timing */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <MapPin className="w-5 h-5" />
+                            <CardTitle>
                                 Route & Schedule
                             </CardTitle>
                         </CardHeader>
@@ -483,9 +475,9 @@ export function ShipmentDetail() {
                                 </div>
                                 <div className="flex-shrink-0 px-4">
                                     <div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))]">
-                                        <div className="w-8 h-0.5 bg-[hsl(var(--border))]"></div>
-                                        {shipment.type === 'FCL' ? <Ship className="w-5 h-5" /> : <Plane className="w-5 h-5" />}
-                                        <div className="w-8 h-0.5 bg-[hsl(var(--border))]"></div>
+                                        <div className="w-12 h-0.5 bg-[hsl(var(--border))]"></div>
+                                        <span className="text-xs font-medium">→</span>
+                                        <div className="w-12 h-0.5 bg-[hsl(var(--border))]"></div>
                                     </div>
                                 </div>
                                 <div className="text-center flex-1">
@@ -500,25 +492,25 @@ export function ShipmentDetail() {
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">ETD</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.etd ? formatDate(shipment.etd) : '—'}
+                                        {shipment.etd ? formatDate(shipment.etd) : 'TBD'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">ETA</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.eta ? formatDate(shipment.eta) : '—'}
+                                        {shipment.eta ? formatDate(shipment.eta) : 'TBD'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Actual Departure</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.atd ? formatDate(shipment.atd) : '—'}
+                                        {shipment.atd ? formatDate(shipment.atd) : 'TBD'}
                                     </p>
                                 </div>
                                 <div>
                                     <p className="text-sm text-[hsl(var(--muted-foreground))]">Actual Arrival</p>
                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                        {shipment.ata ? formatDate(shipment.ata) : '—'}
+                                        {shipment.ata ? formatDate(shipment.ata) : 'TBD'}
                                     </p>
                                 </div>
                             </div>
@@ -528,12 +520,10 @@ export function ShipmentDetail() {
                     {/* Documents */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle className="flex items-center gap-2">
-                                <FileText className="w-5 h-5" />
+                            <CardTitle>
                                 Documents ({documents.length})
                             </CardTitle>
                             <Button size="sm" onClick={handleUploadDocument}>
-                                <Upload className="w-4 h-4 mr-2" />
                                 Upload
                             </Button>
                         </CardHeader>
@@ -546,9 +536,6 @@ export function ShipmentDetail() {
                                             className="flex items-center justify-between p-4 rounded-lg bg-[hsl(var(--secondary))] hover:bg-[hsl(var(--secondary))]/80 transition-colors"
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-lg bg-[hsl(var(--primary))]/20 flex items-center justify-center">
-                                                    <FileText className="w-5 h-5 text-[hsl(var(--primary))]" />
-                                                </div>
                                                 <div>
                                                     <p className="font-medium text-[hsl(var(--foreground))]">
                                                         {documentTypeLabels[doc.document_type] || doc.document_type}
@@ -563,9 +550,35 @@ export function ShipmentDetail() {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => window.open(`${API_URL}/api/documents/${doc.id}/download`, '_blank')}
+                                                    onClick={async () => {
+                                                        try {
+                                                            const stored = localStorage.getItem('logispro-auth');
+                                                            let authToken = '';
+                                                            if (stored) {
+                                                                try { authToken = JSON.parse(stored)?.state?.token || ''; } catch { /* ignore */ }
+                                                            }
+                                                            const response = await fetch(`${API_URL}/api/documents/${doc.id}/download`, {
+                                                                headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+                                                            });
+                                                            if (!response.ok) {
+                                                                toast.error('File not found on server');
+                                                                return;
+                                                            }
+                                                            const blob = await response.blob();
+                                                            const url = window.URL.createObjectURL(blob);
+                                                            const link = document.createElement('a');
+                                                            link.href = url;
+                                                            link.download = doc.file_name || 'document';
+                                                            document.body.appendChild(link);
+                                                            link.click();
+                                                            document.body.removeChild(link);
+                                                            window.URL.revokeObjectURL(url);
+                                                            toast.success(`Downloaded ${doc.file_name}`);
+                                                        } catch {
+                                                            toast.error('Download failed');
+                                                        }
+                                                    }}
                                                 >
-                                                    <Download className="w-4 h-4 mr-1" />
                                                     Download
                                                 </Button>
                                             </div>
@@ -574,16 +587,19 @@ export function ShipmentDetail() {
                                 </div>
                             ) : (
                                 <div className="text-center py-8">
-                                    <FileText className="w-12 h-12 mx-auto text-[hsl(var(--muted-foreground))] mb-3" />
-                                    <p className="text-[hsl(var(--muted-foreground))]">No documents uploaded yet</p>
+                                    <p className="text-[hsl(var(--muted-foreground))] text-sm">No documents uploaded yet</p>
                                     <Button size="sm" className="mt-3" onClick={handleUploadDocument}>
-                                        <Upload className="w-4 h-4 mr-2" />
                                         Upload Document
                                     </Button>
                                 </div>
                             )}
                         </CardContent>
                     </Card>
+
+                    {/* AI Document Analysis */}
+                    {id && (
+                        <ShipmentAIPanel shipmentId={id} documents={documents} />
+                    )}
                 </div>
 
                 {/* Right Column - Sidebar Info */}
@@ -591,8 +607,7 @@ export function ShipmentDetail() {
                     {/* Customer Info */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <User className="w-5 h-5" />
+                            <CardTitle>
                                 Customer
                             </CardTitle>
                         </CardHeader>
@@ -601,21 +616,23 @@ export function ShipmentDetail() {
                                 <p className="font-medium text-[hsl(var(--foreground))]">
                                     {shipment.customer_name || 'N/A'}
                                 </p>
-                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                    {shipment.customer_code || '—'}
-                                </p>
+                                {shipment.customer_code && (
+                                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                        {shipment.customer_code}
+                                    </p>
+                                )}
                             </div>
                             <div>
                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">Country</p>
-                                <p className="text-[hsl(var(--foreground))]">{shipment.customer_country || '—'}</p>
+                                <p className="text-[hsl(var(--foreground))]">{shipment.customer_country || 'N/A'}</p>
                             </div>
                             <div>
                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">Contact</p>
-                                <p className="text-[hsl(var(--foreground))]">{shipment.customer_contact || '—'}</p>
+                                <p className="text-[hsl(var(--foreground))]">{shipment.customer_contact || 'N/A'}</p>
                             </div>
                             <div>
                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">Email</p>
-                                <p className="text-[hsl(var(--primary))]">{shipment.customer_email || '—'}</p>
+                                <p className="text-[hsl(var(--primary))]">{shipment.customer_email || 'N/A'}</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -623,8 +640,7 @@ export function ShipmentDetail() {
                     {/* Forwarder Info */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Building className="w-5 h-5" />
+                            <CardTitle>
                                 Forwarder
                             </CardTitle>
                         </CardHeader>
@@ -637,32 +653,12 @@ export function ShipmentDetail() {
                         </CardContent>
                     </Card>
 
-                    {/* Risk Score */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <AlertTriangle className="w-5 h-5 text-yellow-500" />
-                                Risk Assessment
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center justify-between mb-4">
-                                <span className="text-3xl font-bold text-[hsl(var(--foreground))]">—</span>
-                                <Badge className="bg-gray-500/20 text-gray-400">
-                                    Not Assessed
-                                </Badge>
-                            </div>
-                            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                Risk assessment will be calculated based on shipment progress
-                            </p>
-                        </CardContent>
-                    </Card>
+
 
                     {/* Cost Summary */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <DollarSign className="w-5 h-5" />
+                            <CardTitle>
                                 Cost Summary
                             </CardTitle>
                         </CardHeader>
@@ -671,7 +667,7 @@ export function ShipmentDetail() {
                                 <div className="flex justify-between items-center">
                                     <span className="text-[hsl(var(--muted-foreground))]">Total Cost</span>
                                     <span className="text-xl font-bold text-[hsl(var(--foreground))]">
-                                        {shipment.total_cost_usd ? formatCurrency(shipment.total_cost_usd) : '—'}
+                                        {shipment.total_cost_usd ? formatCurrency(shipment.total_cost_usd) : '$0.00'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center text-sm">
@@ -693,6 +689,26 @@ export function ShipmentDetail() {
                             <Button variant="ghost" size="icon" onClick={() => setShowEditModal(false)}>
                                 <X className="w-5 h-5" />
                             </Button>
+                        </div>
+
+                        {/* Section: Customer */}
+                        <div className="mb-6">
+                            <h3 className="text-sm font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-3">Customer</h3>
+                            <Select
+                                value={editData.customer_id || ''}
+                                onChange={(e) => setEditData({ ...editData, customer_id: e.target.value })}
+                                options={(() => {
+                                    const opts = [{ value: '', label: 'Select Customer...' }, ...customers];
+                                    // If the current customer_id isn't in the loaded customers list, add a fallback
+                                    if (editData.customer_id && !customers.some(c => c.value === editData.customer_id)) {
+                                        opts.push({
+                                            value: editData.customer_id,
+                                            label: shipment?.customer_name || 'Loading...',
+                                        });
+                                    }
+                                    return opts;
+                                })()}
+                            />
                         </div>
 
                         {/* Section: Status & Route */}
@@ -849,7 +865,7 @@ export function ShipmentDetail() {
                                 Cancel
                             </Button>
                             <Button onClick={handleSaveEdit} disabled={saving}>
-                                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                                 Save Changes
                             </Button>
                         </div>
@@ -871,7 +887,6 @@ export function ShipmentDetail() {
                         {/* Add files button */}
                         <div className="mb-4">
                             <Button variant="outline" onClick={handleAddFiles}>
-                                <Plus className="w-4 h-4 mr-2" />
                                 Add Files
                             </Button>
                             <p className="text-sm text-[hsl(var(--muted-foreground))] mt-2">
@@ -884,7 +899,7 @@ export function ShipmentDetail() {
                             <div className="space-y-3 mb-4">
                                 {uploadFiles.map((fileData, index) => (
                                     <div key={index} className="flex items-center gap-3 p-3 rounded-lg bg-[hsl(var(--secondary))]">
-                                        <FileText className="w-5 h-5 text-[hsl(var(--primary))] flex-shrink-0" />
+
                                         <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
                                             <div className="md:col-span-1">
                                                 <label className="text-xs text-[hsl(var(--muted-foreground))]">Document Name</label>
@@ -929,14 +944,14 @@ export function ShipmentDetail() {
                                             className="text-[hsl(var(--destructive))] h-8 w-8 flex-shrink-0"
                                             onClick={() => handleRemoveFile(index)}
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            Remove
                                         </Button>
                                     </div>
                                 ))}
                             </div>
                         ) : (
                             <div className="text-center py-8 border-2 border-dashed border-[hsl(var(--border))] rounded-lg mb-4">
-                                <Upload className="w-12 h-12 mx-auto text-[hsl(var(--muted-foreground))] mb-3" />
+                                <p className="text-lg text-[hsl(var(--muted-foreground))] mb-3">No files selected</p>
                                 <p className="text-[hsl(var(--muted-foreground))]">Click "Add Files" to select documents</p>
                             </div>
                         )}
@@ -946,7 +961,7 @@ export function ShipmentDetail() {
                                 Cancel
                             </Button>
                             <Button onClick={handleUploadFiles} disabled={uploading || uploadFiles.length === 0}>
-                                {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                                {uploading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                                 Upload {uploadFiles.length > 0 && `(${uploadFiles.length})`}
                             </Button>
                         </div>

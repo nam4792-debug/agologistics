@@ -47,7 +47,11 @@ router.patch('/read-all', authenticateToken, async (req, res) => {
 });
 
 // Test endpoint - send test notification
-router.post('/test', async (req, res) => {
+router.post('/test', authenticateToken, async (req, res) => {
+    // BUG-21: Only allow in development mode
+    if (process.env.NODE_ENV === 'production') {
+        return res.status(403).json({ error: 'Test endpoints disabled in production' });
+    }
     try {
         const io = req.app.get('io');
         const { title, message, priority } = req.body;

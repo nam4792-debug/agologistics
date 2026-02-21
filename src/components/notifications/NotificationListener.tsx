@@ -86,7 +86,7 @@ export function NotificationListener({ userId, onNotification: onNotify }: Notif
                                         href={notification.actionUrl}
                                         className="mt-2 inline-block text-sm font-medium text-[hsl(var(--primary))] hover:underline"
                                     >
-                                        {notification.actionLabel || 'Xem chi tiết'}
+                                        {notification.actionLabel || 'View details'}
                                     </a>
                                 )}
                             </div>

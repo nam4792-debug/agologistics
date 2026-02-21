@@ -171,9 +171,13 @@ router.get('/me', authenticateToken, async (req, res) => {
     }
 });
 
-// Register (admin only)
-router.post('/register', async (req, res) => {
+// Register (admin only — requires auth + admin role)
+router.post('/register', authenticateToken, async (req, res) => {
     try {
+        // BUG-03: Require admin role to create new users
+        if (req.user.role !== 'ADMIN') {
+            return res.status(403).json({ error: 'Only admins can create new users' });
+        }
         const { email, password, fullName, role, department } = req.body;
 
         if (!email || !password || !fullName) {

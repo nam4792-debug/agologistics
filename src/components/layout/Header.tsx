@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, User, Globe, Loader2, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui';
+import { Search, User, Loader2, LogOut } from 'lucide-react';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { fetchApi } from '@/lib/api';
 
 interface HeaderProps {
     sidebarCollapsed: boolean;
@@ -33,32 +34,28 @@ interface SearchResult {
     };
 }
 
-// Get API URL from environment or default to localhost
-const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
-
 export function Header({ sidebarCollapsed }: HeaderProps) {
     const navigate = useNavigate();
     const { user, logout } = useAuthStore();
     const [searchQuery, setSearchQuery] = useState('');
     const [searching, setSearching] = useState(false);
+    const [searchError, setSearchError] = useState(false);
     const [results, setResults] = useState<SearchResult | null>(null);
     const [showResults, setShowResults] = useState(false);
     const [showUserMenu, setShowUserMenu] = useState(false);
-
-    // Static notification count
-    const unreadAlerts = 3;
 
     const handleSearch = useCallback(async (query: string) => {
         if (query.trim().length < 2) {
             setResults(null);
             setShowResults(false);
+            setSearchError(false);
             return;
         }
 
         setSearching(true);
+        setSearchError(false);
         try {
-            const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(query)}`);
-            const data = await res.json();
+            const data = await fetchApi(`/api/search?q=${encodeURIComponent(query)}`);
 
             if (data.success) {
                 setResults(data.results);
@@ -73,6 +70,8 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
             }
         } catch (error) {
             console.error('Search error:', error);
+            setSearchError(true);
+            setShowResults(true);
         } finally {
             setSearching(false);
         }
@@ -106,6 +105,7 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
         <header
             className={cn(
                 'fixed top-0 right-0 z-30 h-16 bg-[hsl(var(--background))]/80 backdrop-blur-md border-b border-[hsl(var(--border))] transition-all duration-300 flex items-center justify-between px-6',
+                'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-gradient-to-r after:from-emerald-500/40 after:via-green-500/20 after:to-transparent',
                 sidebarCollapsed ? 'left-16' : 'left-64'
             )}
         >
@@ -129,13 +129,22 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
                 </div>
 
                 {/* Search Results Dropdown */}
-                {showResults && results && (
+                {showResults && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg shadow-xl max-h-80 overflow-y-auto z-50">
-                        {results.shipments.length === 0 && results.bookings.length === 0 ? (
+                        {searchError ? (
+                            <div className="p-4 text-center">
+                                <p className="text-sm font-medium text-[hsl(var(--muted-foreground))] mb-1">
+                                    Search unavailable
+                                </p>
+                                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                                    Server offline — search unavailable
+                                </p>
+                            </div>
+                        ) : results && results.shipments.length === 0 && results.bookings.length === 0 ? (
                             <div className="p-4 text-center text-[hsl(var(--muted-foreground))]">
                                 No results found
                             </div>
-                        ) : (
+                        ) : results ? (
                             <>
                                 {results.shipments.length > 0 && (
                                     <div>
@@ -176,27 +185,15 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
                                     </div>
                                 )}
                             </>
-                        )}
+                        ) : null}
                     </div>
                 )}
             </div>
 
             {/* Right Section */}
             <div className="flex items-center gap-4">
-                {/* Language Toggle */}
-                <Button variant="ghost" size="icon" className="relative">
-                    <Globe className="w-5 h-5" />
-                </Button>
-
-                {/* Notifications */}
-                <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="w-5 h-5" />
-                    {unreadAlerts > 0 && (
-                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-[hsl(var(--destructive))] text-white text-xs font-bold rounded-full flex items-center justify-center">
-                            {unreadAlerts}
-                        </span>
-                    )}
-                </Button>
+                {/* Notifications Dropdown */}
+                <NotificationCenter />
 
                 {/* User Profile with Menu */}
                 <div className="relative">
@@ -212,7 +209,7 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
                                 {user?.role || 'Staff'}
                             </p>
                         </div>
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-700 flex items-center justify-center shadow-sm">
                             <User className="w-5 h-5 text-white" />
                         </div>
                     </button>
@@ -229,7 +226,7 @@ export function Header({ sidebarCollapsed }: HeaderProps) {
                                 className="w-full px-3 py-2 flex items-center gap-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
                             >
                                 <LogOut className="w-4 h-4" />
-                                Đăng xuất
+                                Log out
                             </button>
                         </div>
                     )}

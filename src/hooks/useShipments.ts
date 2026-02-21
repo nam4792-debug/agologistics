@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSocket } from '@/contexts';
+import { fetchApi } from '@/lib/api';
 import toast from 'react-hot-toast';
-
-// Get API URL from environment or default to localhost
-const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
 
 interface Shipment {
     id: string;
@@ -29,8 +27,7 @@ export function useShipments() {
     const fetchShipments = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${API_URL}/api/shipments`);
-            const data = await response.json();
+            const data = await fetchApi('/api/shipments');
             if (data.shipments) {
                 setShipments(data.shipments);
             }

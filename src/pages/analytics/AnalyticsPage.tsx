@@ -1,18 +1,8 @@
 import { useState, useEffect } from 'react';
-import {
-    BarChart3,
-    TrendingUp,
-    Ship,
-    DollarSign,
-    Clock,
-    Calendar,
-    Loader2,
-    RefreshCw,
-    Package,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, Button, Select } from '@/components/ui';
+import { Loader2, RefreshCw } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface BookingData {
     id: string;
@@ -21,7 +11,7 @@ interface BookingData {
     type?: string;
     origin_port?: string;
     destination_port?: string;
-    freight_rate?: number;
+    freight_rate_usd?: number | string;
     container_count?: number;
     created_at?: string;
 }
@@ -35,17 +25,9 @@ interface ShipmentData {
 }
 
 export function AnalyticsPage() {
-    const [period, setPeriod] = useState('MONTH');
     const [bookings, setBookings] = useState<BookingData[]>([]);
     const [shipments, setShipments] = useState<ShipmentData[]>([]);
     const [loading, setLoading] = useState(true);
-
-    const periodOptions = [
-        { value: 'WEEK', label: 'This Week' },
-        { value: 'MONTH', label: 'This Month' },
-        { value: 'QUARTER', label: 'This Quarter' },
-        { value: 'YEAR', label: 'This Year' },
-    ];
 
     useEffect(() => {
         fetchData();
@@ -54,13 +36,10 @@ export function AnalyticsPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [bookingsRes, shipmentsRes] = await Promise.all([
-                fetch(`${API_URL}/api/bookings?status=CONFIRMED`),
-                fetch(`${API_URL}/api/shipments`),
+            const [bookingsData, shipmentsData] = await Promise.all([
+                fetchApi('/api/bookings'),
+                fetchApi('/api/shipments'),
             ]);
-
-            const bookingsData = await bookingsRes.json();
-            const shipmentsData = await shipmentsRes.json();
 
             setBookings(bookingsData.bookings || []);
             setShipments(shipmentsData.shipments || []);
@@ -71,12 +50,13 @@ export function AnalyticsPage() {
         }
     };
 
-    // Calculate stats from real data
-    const confirmedStatuses = ['BOOKING_CONFIRMED', 'DOCUMENTATION_IN', 'READY_TO', 'LOADING', 'LOADED', 'IN_TRANSIT'];
-    const activeShipments = shipments.filter(s => confirmedStatuses.includes(s.status));
+    // Active = in-progress bookings (not CANCELLED, USED, or COMPLETED)
+    const activeBookings = bookings.filter(b => !['CANCELLED', 'USED', 'COMPLETED'].includes(b.status));
+    // Active shipments = currently in workflow (not COMPLETED, DELIVERED, or CANCELLED)
+    const activeShipments = shipments.filter(s => !['COMPLETED', 'DELIVERED', 'CANCELLED'].includes(s.status));
 
-    const totalRevenue = bookings.reduce((sum, b) => sum + (b.freight_rate || 0), 0);
-    const totalContainers = bookings.reduce((sum, b) => sum + (b.container_count || 0), 0);
+    const totalRevenue = activeBookings.reduce((sum, b) => sum + (parseFloat(String(b.freight_rate_usd)) || 0), 0);
+    const totalContainers = activeBookings.reduce((sum, b) => sum + (parseInt(String(b.container_count)) || 0), 0);
 
     // Group by destination
     const destinationCounts: Record<string, number> = {};
@@ -90,31 +70,24 @@ export function AnalyticsPage() {
             country,
             count,
             percentage: Math.round((count / Math.max(shipments.length, 1)) * 100),
-            flag: getCountryFlag(country),
         }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 6);
 
-    // Group by type
-    const fclBookings = bookings.filter(b => b.type === 'FCL').length;
-    const airBookings = bookings.filter(b => b.type === 'AIR').length;
-    const lclBookings = bookings.filter(b => b.type === 'LCL').length;
+    // Group by type (exclude cancelled) — FCL and AIR
+    const fclBookings = activeBookings.filter(b => b.type === 'FCL').length;
+    const airBookings = activeBookings.filter(b => b.type === 'AIR').length;
 
-    function getCountryFlag(country: string): string {
-        const flags: Record<string, string> = {
-            'Vietnam': '🇻🇳',
-            'India': '🇮🇳',
-            'China': '🇨🇳',
-            'Japan': '🇯🇵',
-            'UAE': '🇦🇪',
-            'Netherlands': '🇳🇱',
-            'Singapore': '🇸🇬',
-            'Thailand': '🇹🇭',
-            'Korea': '🇰🇷',
-            'USA': '🇺🇸',
-        };
-        return flags[country] || '🌍';
-    }
+    // Group shipments by actual status
+    const statusCounts: Record<string, number> = {};
+    shipments.forEach(s => {
+        const status = s.status || 'UNKNOWN';
+        statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+
+    const statusEntries = Object.entries(statusCounts)
+        .map(([status, count]) => ({ status: status.replace(/_/g, ' '), count }))
+        .sort((a, b) => b.count - a.count);
 
     if (loading) {
         return (
@@ -129,96 +102,60 @@ export function AnalyticsPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-[hsl(var(--foreground))] flex items-center gap-3">
-                        <BarChart3 className="w-8 h-8" />
+                    <h1 className="text-2xl font-semibold text-[hsl(var(--foreground))]">
                         Analytics
                     </h1>
-                    <p className="text-[hsl(var(--muted-foreground))] mt-1">
-                        Real-time insights from confirmed bookings
+                    <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                        Operational insights from active bookings and shipments
                     </p>
                 </div>
                 <div className="flex gap-2">
-                    <div className="w-40">
-                        <Select
-                            options={periodOptions}
-                            value={period}
-                            onChange={(e) => setPeriod(e.target.value)}
-                        />
-                    </div>
-                    <Button variant="outline" onClick={fetchData}>
+                    <Button variant="outline" size="sm" onClick={fetchData}>
                         <RefreshCw className="w-4 h-4 mr-2" />
                         Refresh
-                    </Button>
-                    <Button>
-                        <Calendar className="w-4 h-4 mr-2" />
-                        Export Report
                     </Button>
                 </div>
             </div>
 
-            {/* KPI Cards */}
+            {/* KPI Cards — clean, no icons, no gradients */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="gradient-primary text-white">
+                <Card>
                     <CardContent className="p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-white/80">Confirmed Bookings</p>
-                                <p className="text-3xl font-bold">{bookings.length}</p>
-                                <p className="text-sm text-white/80 mt-1">
-                                    <TrendingUp className="w-3 h-3 inline mr-1" />
-                                    Active bookings
-                                </p>
-                            </div>
-                            <Ship className="w-10 h-10 text-white/50" />
-                        </div>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Active Bookings</p>
+                        <p className="text-3xl font-bold text-[hsl(var(--foreground))] mt-1">{activeBookings.length}</p>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                            of {bookings.length} total
+                        </p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white">
+                <Card>
                     <CardContent className="p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-white/80">Active Shipments</p>
-                                <p className="text-3xl font-bold">{activeShipments.length}</p>
-                                <p className="text-sm text-white/80 mt-1">
-                                    <TrendingUp className="w-3 h-3 inline mr-1" />
-                                    In progress
-                                </p>
-                            </div>
-                            <Clock className="w-10 h-10 text-white/50" />
-                        </div>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Active Shipments</p>
+                        <p className="text-3xl font-bold text-[hsl(var(--foreground))] mt-1">{activeShipments.length}</p>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                            of {shipments.length} total
+                        </p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-purple-500 to-pink-600 text-white">
+                <Card>
                     <CardContent className="p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-white/80">Total Revenue</p>
-                                <p className="text-3xl font-bold">{formatCurrency(totalRevenue)}</p>
-                                <p className="text-sm text-white/80 mt-1">
-                                    <TrendingUp className="w-3 h-3 inline mr-1" />
-                                    From confirmed
-                                </p>
-                            </div>
-                            <DollarSign className="w-10 h-10 text-white/50" />
-                        </div>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Total Revenue</p>
+                        <p className="text-3xl font-bold text-[hsl(var(--foreground))] mt-1">{formatCurrency(totalRevenue)}</p>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                            From active bookings
+                        </p>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-gradient-to-br from-orange-500 to-amber-600 text-white">
+                <Card>
                     <CardContent className="p-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-white/80">Total Containers</p>
-                                <p className="text-3xl font-bold">{totalContainers}</p>
-                                <p className="text-sm text-white/80 mt-1">
-                                    <Package className="w-3 h-3 inline mr-1" />
-                                    TEU/FEU
-                                </p>
-                            </div>
-                            <BarChart3 className="w-10 h-10 text-white/50" />
-                        </div>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">Total Containers</p>
+                        <p className="text-3xl font-bold text-[hsl(var(--foreground))] mt-1">{totalContainers}</p>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+                            TEU/FEU
+                        </p>
                     </CardContent>
                 </Card>
             </div>
@@ -233,35 +170,23 @@ export function AnalyticsPage() {
                     <CardContent>
                         <div className="h-64 flex items-end justify-around gap-8 px-8">
                             {[
-                                { type: 'FCL', count: fclBookings, color: 'bg-blue-500' },
-                                { type: 'AIR', count: airBookings, color: 'bg-purple-500' },
-                                { type: 'LCL', count: lclBookings, color: 'bg-cyan-500' },
-                            ].map((item) => (
+                                { type: 'FCL', count: fclBookings, color: 'bg-[hsl(var(--primary))]' },
+                                { type: 'AIR', count: airBookings, color: 'bg-[hsl(var(--primary))]/60' },
+                            ].filter(item => item.count > 0).map((item) => (
                                 <div key={item.type} className="flex flex-col items-center gap-2 flex-1">
                                     <div className="flex items-end h-48 w-full justify-center">
                                         <div
                                             className={`w-16 ${item.color} rounded-t`}
-                                            style={{ height: `${Math.max((item.count / Math.max(bookings.length, 1)) * 100, 10)}%` }}
+                                            style={{ height: `${Math.max((item.count / Math.max(activeBookings.length, 1)) * 100, 10)}%` }}
                                         />
                                     </div>
                                     <span className="text-sm font-medium text-[hsl(var(--foreground))]">{item.type}</span>
                                     <span className="text-lg font-bold text-[hsl(var(--foreground))]">{item.count}</span>
                                 </div>
                             ))}
-                        </div>
-                        <div className="flex justify-center gap-6 mt-4">
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded bg-blue-500" />
-                                <span className="text-sm text-[hsl(var(--muted-foreground))]">FCL</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded bg-purple-500" />
-                                <span className="text-sm text-[hsl(var(--muted-foreground))]">Air</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded bg-cyan-500" />
-                                <span className="text-sm text-[hsl(var(--muted-foreground))]">LCL</span>
-                            </div>
+                            {fclBookings === 0 && airBookings === 0 && (
+                                <p className="text-center text-[hsl(var(--muted-foreground))] py-8">No booking data</p>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -276,12 +201,8 @@ export function AnalyticsPage() {
                             <div className="space-y-4">
                                 {destinations.map((dest) => (
                                     <div key={dest.country} className="flex items-center gap-4">
-                                        <span className="text-2xl">{dest.flag}</span>
+                                        <span className="w-24 text-sm font-medium text-[hsl(var(--foreground))]">{dest.country}</span>
                                         <div className="flex-1">
-                                            <div className="flex justify-between mb-1">
-                                                <span className="text-sm text-[hsl(var(--foreground))]">{dest.country}</span>
-                                                <span className="text-sm text-[hsl(var(--muted-foreground))]">{dest.count} shipments</span>
-                                            </div>
                                             <div className="h-2 bg-[hsl(var(--secondary))] rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full bg-[hsl(var(--primary))] rounded-full"
@@ -289,6 +210,7 @@ export function AnalyticsPage() {
                                                 />
                                             </div>
                                         </div>
+                                        <span className="text-sm text-[hsl(var(--muted-foreground))] w-20 text-right">{dest.count} {dest.count === 1 ? 'shipment' : 'shipments'}</span>
                                     </div>
                                 ))}
                             </div>
@@ -304,23 +226,28 @@ export function AnalyticsPage() {
                         <CardTitle>Revenue by Booking</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {bookings.length > 0 ? (
+                        {activeBookings.length > 0 ? (
                             <div className="space-y-3">
-                                {bookings.slice(0, 6).map((booking) => (
-                                    <div key={booking.id} className="flex items-center gap-4">
-                                        <div className="w-3 h-3 rounded bg-[hsl(var(--primary))]" />
-                                        <span className="w-28 text-sm text-[hsl(var(--muted-foreground))]">{booking.booking_number}</span>
-                                        <div className="flex-1 h-2 bg-[hsl(var(--secondary))] rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full rounded-full bg-[hsl(var(--primary))]"
-                                                style={{ width: `${Math.min((booking.freight_rate || 0) / Math.max(totalRevenue, 1) * 100 * bookings.length, 100)}%` }}
-                                            />
-                                        </div>
-                                        <span className="text-sm font-medium text-[hsl(var(--foreground))] w-24 text-right">
-                                            {formatCurrency(booking.freight_rate || 0)}
-                                        </span>
-                                    </div>
-                                ))}
+                                {[...activeBookings]
+                                    .sort((a, b) => (parseFloat(String(b.freight_rate_usd)) || 0) - (parseFloat(String(a.freight_rate_usd)) || 0))
+                                    .slice(0, 6).map((booking) => {
+                                        const rate = parseFloat(String(booking.freight_rate_usd)) || 0;
+                                        const maxRate = Math.max(...activeBookings.map(b => parseFloat(String(b.freight_rate_usd)) || 0), 1);
+                                        return (
+                                            <div key={booking.id} className="flex items-center gap-4">
+                                                <span className="w-32 text-sm text-[hsl(var(--muted-foreground))] truncate">{booking.booking_number}</span>
+                                                <div className="flex-1 h-2 bg-[hsl(var(--secondary))] rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full rounded-full bg-[hsl(var(--primary))]"
+                                                        style={{ width: `${Math.max((rate / maxRate) * 100, 2)}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-sm font-medium text-[hsl(var(--foreground))] w-24 text-right">
+                                                    {formatCurrency(rate)}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
                             </div>
                         ) : (
                             <p className="text-center text-[hsl(var(--muted-foreground))] py-8">No booking data</p>
@@ -328,29 +255,21 @@ export function AnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                {/* Shipment Status Overview */}
+                {/* Shipment Status Overview — uses real statuses from data */}
                 <Card>
                     <CardHeader>
                         <CardTitle>Shipment Status Overview</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-4">
-                            {[
-                                { status: 'Booking Confirmed', count: shipments.filter(s => s.status === 'BOOKING_CONFIRMED').length, color: 'bg-blue-500' },
-                                { status: 'Documentation In', count: shipments.filter(s => s.status === 'DOCUMENTATION_IN').length, color: 'bg-cyan-500' },
-                                { status: 'Loading', count: shipments.filter(s => s.status === 'LOADING' || s.status === 'LOADED').length, color: 'bg-yellow-500' },
-                                { status: 'In Transit', count: shipments.filter(s => s.status === 'IN_TRANSIT').length, color: 'bg-green-500' },
-                            ].map((item) => (
+                        <div className="space-y-3">
+                            {statusEntries.length > 0 ? statusEntries.map((item) => (
                                 <div key={item.status} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--secondary))]">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${item.color}/20`}>
-                                            <span className="text-lg font-bold">{item.count}</span>
-                                        </div>
-                                        <p className="font-medium text-[hsl(var(--foreground))]">{item.status}</p>
-                                    </div>
-                                    <div className={`w-3 h-3 rounded-full ${item.color}`} />
+                                    <p className="text-sm font-medium text-[hsl(var(--foreground))]">{item.status}</p>
+                                    <span className="text-lg font-bold text-[hsl(var(--foreground))]">{item.count}</span>
                                 </div>
-                            ))}
+                            )) : (
+                                <p className="text-center text-[hsl(var(--muted-foreground))] py-8">No shipment data</p>
+                            )}
                         </div>
                     </CardContent>
                 </Card>

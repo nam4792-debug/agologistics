@@ -3,7 +3,8 @@ import { X, Ship, Plane, Loader2, Package, UserCheck, UserPlus, Plus } from 'luc
 import { Button, Input, Select } from '@/components/ui';
 import { NewCustomerModal } from './NewCustomerModal';
 import { NewQCStaffModal } from './NewQCStaffModal';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
+import toast from 'react-hot-toast';
 
 interface NewShipmentModalProps {
     isOpen: boolean;
@@ -38,7 +39,10 @@ interface AvailableBooking {
     id: string;
     booking_number: string;
     type: string;
+    status: string;
     route: string;
+    origin_port?: string;
+    destination_port?: string;
     etd?: string;
     forwarder_name?: string;
 }
@@ -87,13 +91,11 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
         if (formData.bookingId) {
             const selectedBooking = availableBookings.find(b => b.id === formData.bookingId);
             if (selectedBooking) {
-                // Parse route to get ports
-                const routeParts = selectedBooking.route?.split(' - ') || [];
                 setFormData(prev => ({
                     ...prev,
                     type: selectedBooking.type || prev.type,
-                    originPort: routeParts[0] || prev.originPort,
-                    destinationPort: routeParts[1] || prev.destinationPort,
+                    originPort: selectedBooking.origin_port || prev.originPort,
+                    destinationPort: selectedBooking.destination_port || prev.destinationPort,
                     etd: selectedBooking.etd?.split('T')[0] || prev.etd,
                 }));
             }
@@ -102,8 +104,7 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
 
     const loadCustomers = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/customers`);
-            const data = await res.json();
+            const data = await fetchApi('/api/customers');
             if (data.success && data.customers) {
                 setCustomers(
                     data.customers.map((c: { id: string; name: string; code: string }) => ({
@@ -119,13 +120,12 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
 
     const loadForwarders = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/providers`);
-            const data = await res.json();
+            const data = await fetchApi('/api/providers');
             if (data.success && data.providers) {
                 setForwarders(
-                    data.providers.map((f: { id: string; company_name: string }) => ({
+                    data.providers.map((f: { id: string; name: string }) => ({
                         value: f.id,
-                        label: f.company_name,
+                        label: f.name,
                     }))
                 );
             }
@@ -136,8 +136,7 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
 
     const loadQCStaff = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/qc-staff`);
-            const data = await res.json();
+            const data = await fetchApi('/api/qc-staff');
             if (data.success && data.staff) {
                 setQcPersons(
                     data.staff.map((s: { id: string; name: string; role: string }) => ({
@@ -154,18 +153,12 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
     const loadAvailableBookings = async () => {
         setLoadingBookings(true);
         try {
-            // Fetch bookings that are not yet linked to any shipment
-            const res = await fetch(`${API_URL}/api/bookings?status=CONFIRMED&unlinked=true`);
-            const data = await res.json();
+            // Fetch all bookings that are not yet linked to any shipment (PENDING + CONFIRMED)
+            const data = await fetchApi('/api/bookings?unlinked=true');
             setAvailableBookings(data.bookings || []);
         } catch (e) {
             console.error('Failed to load bookings:', e);
-            // Mock data for demo
-            setAvailableBookings([
-                { id: 'bk-001', booking_number: 'BK-2025-0001', type: 'FCL', route: 'Ho Chi Minh - Chennai', etd: '2025-02-15' },
-                { id: 'bk-002', booking_number: 'BK-2025-0002', type: 'FCL', route: 'Cat Lai - Singapore', etd: '2025-02-20' },
-                { id: 'bk-003', booking_number: 'BK-2025-0003', type: 'AIR', route: 'SGN - NRT', etd: '2025-02-18' },
-            ]);
+            setAvailableBookings([]);
         } finally {
             setLoadingBookings(false);
         }
@@ -210,16 +203,17 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
                 eta: formData.eta || null,
             };
 
-            const result = await fetch(`${API_URL}/api/shipments`, {
+            const result = await fetchApi('/api/shipments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-            }).then(r => r.json());
+            });
 
             if (result.error) {
                 throw new Error(result.error);
             }
 
+            toast.success(`Shipment ${shipmentNumber} created!`);
             onSuccess?.(result.shipment);
             onClose();
 
@@ -255,7 +249,7 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
         { value: '', label: loadingBookings ? 'Loading bookings...' : 'No linked booking (create new)' },
         ...availableBookings.map(b => ({
             value: b.id,
-            label: `${b.booking_number} - ${b.type} - ${b.route}`,
+            label: `${b.booking_number} [${b.status}] - ${b.type} - ${b.route}`,
         })),
     ];
 
@@ -306,7 +300,7 @@ export function NewShipmentModal({ isOpen, onClose, onSuccess }: NewShipmentModa
                             <div className="flex items-center gap-2 mb-3">
                                 <Package className="w-5 h-5 text-[hsl(var(--primary))]" />
                                 <label className="text-sm font-medium text-[hsl(var(--foreground))]">
-                                    Link to Confirmed Booking (Optional)
+                                    Link to Booking (Optional)
                                 </label>
                             </div>
                             <Select

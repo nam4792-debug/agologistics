@@ -2,9 +2,12 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
+const { authenticateToken } = require('./auth');
+const auditService = require('../services/auditService');
+const { validate, checkVersion, RULES } = require('../middleware/validator');
 
 // Get all shipments
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { status, type, customerId } = req.query;
 
@@ -48,16 +51,20 @@ router.get('/', async (req, res) => {
 });
 
 // Get single shipment
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT s.*, 
               c.company_name as customer_name, c.contact_name as customer_contact, c.email as customer_email, c.country as customer_country,
-              f.company_name as forwarder_name, f.contact_name as forwarder_contact
+              COALESCE(f.company_name, bf.company_name) as forwarder_name,
+              COALESCE(f.contact_name, bf.contact_name) as forwarder_contact
        FROM shipments s
        LEFT JOIN customers c ON s.customer_id = c.id
        LEFT JOIN forwarders f ON s.forwarder_id = f.id
-       WHERE s.id = $1`,
+       LEFT JOIN bookings b2 ON b2.shipment_id = s.id
+       LEFT JOIN forwarders bf ON b2.forwarder_id = bf.id
+       WHERE s.id = $1
+       LIMIT 1`,
             [req.params.id]
         );
 
@@ -65,17 +72,19 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Shipment not found' });
         }
 
-        // Get documents
+        // Get documents (exclude soft-deleted)
         const { rows: documents } = await pool.query(
-            `SELECT * FROM documents WHERE shipment_id = $1 ORDER BY created_at DESC`,
+            `SELECT * FROM documents WHERE shipment_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
             [req.params.id]
         );
 
         // Get bookings
         const { rows: bookings } = await pool.query(
-            `SELECT b.*, bd.cut_off_si, bd.cut_off_vgm, bd.cut_off_cy, bd.sales_confirmed
+            `SELECT b.*, bd.cut_off_si, bd.cut_off_vgm, bd.cut_off_cy, bd.sales_confirmed,
+                    fw.company_name as forwarder_name
        FROM bookings b
        LEFT JOIN booking_deadlines bd ON b.id = bd.booking_id
+       LEFT JOIN forwarders fw ON b.forwarder_id = fw.id
        WHERE b.shipment_id = $1`,
             [req.params.id]
         );
@@ -105,7 +114,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create shipment
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, validate(RULES.shipment.create), async (req, res) => {
     try {
         // Accept both snake_case and camelCase
         const body = req.body;
@@ -126,6 +135,7 @@ router.post('/', async (req, res) => {
         const etd = body.etd || null;
         const eta = body.eta || null;
         const notes = body.notes || null;
+        const bookingId = body.booking_id || body.bookingId || null;
 
         // Validate required fields
         if (!shipmentNumber || !destinationPort || !cargoDescription) {
@@ -169,6 +179,14 @@ router.post('/', async (req, res) => {
 
         const createdShipment = rows[0] || { id, shipment_number: shipmentNumber };
 
+        // Link booking to this shipment if booking_id was provided
+        if (bookingId) {
+            await pool.query(
+                'UPDATE bookings SET shipment_id = $1, status = $2, updated_at = NOW() WHERE id = $3',
+                [id, 'ALLOCATED', bookingId]
+            );
+        }
+
         // Emit real-time event
         const io = req.app.get('io');
         if (io) io.emit('shipment:created', createdShipment);
@@ -181,7 +199,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update shipment
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, validate(RULES.shipment.update), checkVersion('shipments'), async (req, res) => {
     try {
         const updates = req.body;
         const fields = [];
@@ -192,8 +210,17 @@ router.put('/:id', async (req, res) => {
             'status',
             'origin_port',
             'destination_port',
+            'origin_country',
+            'destination_country',
             'cargo_description',
             'cargo_weight_kg',
+            'cargo_volume_cbm',
+            'container_count',
+            'container_type',
+            'incoterm',
+            'customer_id',
+            'forwarder_id',
+            'type',
             'etd',
             'eta',
             'atd',
@@ -201,6 +228,12 @@ router.put('/:id', async (req, res) => {
             'total_cost_usd',
             'notes',
         ];
+
+        // Convert empty date strings to null (PostgreSQL rejects '' for date/timestamp columns)
+        const dateFields = ['etd', 'eta', 'atd', 'ata'];
+        for (const df of dateFields) {
+            if (updates[df] === '') updates[df] = null;
+        }
 
         for (const [key, value] of Object.entries(updates)) {
             const snakeKey = key.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
@@ -229,6 +262,12 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({ error: 'Shipment not found' });
         }
 
+        // Audit trail
+        auditService.log('shipment', req.params.id, 'UPDATE', req.user?.userId || null, {
+            shipment_number: rows[0].shipment_number,
+            updated_fields: Object.keys(updates),
+        });
+
         // Emit real-time event
         const io = req.app.get('io');
         if (io) io.emit('shipment:updated', rows[0]);
@@ -236,14 +275,32 @@ router.put('/:id', async (req, res) => {
         res.json({ shipment: rows[0] });
     } catch (error) {
         console.error('Error updating shipment:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: 'Internal server error', message: error.message, detail: error.detail || null });
     }
 });
 
 // Update shipment status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', authenticateToken, async (req, res) => {
     try {
         const { status } = req.body;
+        const validStatuses = [
+            'DRAFT', 'BOOKED', 'BOOKING_CONFIRMED',
+            'DOCUMENTATION_IN_PROGRESS', 'READY_TO_LOAD',
+            'LOADING', 'LOADED',
+            'CUSTOMS_SUBMITTED', 'CUSTOMS_CLEARED',
+            'IN_TRANSIT', 'ARRIVED', 'DELIVERED', 'CANCELLED'
+        ];
+
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` });
+        }
+
+        // Get current status for audit trail
+        const { rows: current } = await pool.query('SELECT status FROM shipments WHERE id = $1', [req.params.id]);
+        if (current.length === 0) {
+            return res.status(404).json({ error: 'Shipment not found' });
+        }
+        const oldStatus = current[0].status;
 
         await pool.query(
             `UPDATE shipments SET status = $1, updated_at = NOW() WHERE id = $2`,
@@ -257,6 +314,12 @@ router.patch('/:id/status', async (req, res) => {
             return res.status(404).json({ error: 'Shipment not found' });
         }
 
+        // Audit trail
+        auditService.log('shipment', req.params.id, 'STATUS_CHANGE', req.user?.userId || null, {
+            shipment_number: rows[0].shipment_number,
+            status: { old: oldStatus, new: status },
+        });
+
         // Emit real-time event
         const io = req.app.get('io');
         if (io) io.emit('shipment:updated', rows[0]);
@@ -269,7 +332,7 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // Delete shipment
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         const shipmentId = req.params.id;
 
@@ -289,9 +352,23 @@ router.delete('/:id', async (req, res) => {
             [shipmentId]
         );
 
+        // Delete related records that reference this shipment (prevent FK violations)
+        await pool.query('DELETE FROM notifications WHERE shipment_id = $1', [shipmentId]);
+        try { await pool.query('DELETE FROM alerts WHERE shipment_id = $1', [shipmentId]); } catch (e) { }
+        try { await pool.query('DELETE FROM ai_analysis_results WHERE shipment_id = $1', [shipmentId]); } catch (e) { }
+        try { await pool.query('DELETE FROM ai_chat_messages WHERE shipment_id = $1', [shipmentId]); } catch (e) { }
+        try { await pool.query('DELETE FROM shipment_revenue WHERE shipment_id = $1', [shipmentId]); } catch (e) { }
+        try { await pool.query("DELETE FROM audit_log WHERE entity_type = 'shipment' AND entity_id = $1", [shipmentId]); } catch (e) { }
+
         // Delete related documents
         await pool.query(
             'DELETE FROM documents WHERE shipment_id = $1',
+            [shipmentId]
+        );
+
+        // Delete related invoices
+        await pool.query(
+            'DELETE FROM invoices WHERE shipment_id = $1',
             [shipmentId]
         );
 
@@ -310,6 +387,11 @@ router.delete('/:id', async (req, res) => {
         // Emit real-time event
         const io = req.app.get('io');
         if (io) io.emit('shipment:deleted', { id: shipmentId });
+
+        // Audit trail
+        auditService.log('shipment', shipmentId, 'DELETE', req.user?.userId || null, {
+            shipment_number: existing[0].shipment_number,
+        });
 
         res.json({ message: 'Shipment deleted successfully' });
     } catch (error) {

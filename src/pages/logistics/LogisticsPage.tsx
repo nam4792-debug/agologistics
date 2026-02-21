@@ -1,24 +1,11 @@
 import { useState, useEffect } from 'react';
-import {
-    Truck,
-    Plus,
-    Search,
-    MapPin,
-    Phone,
-    Clock,
-    Package,
-    CheckCircle,
-    AlertTriangle,
-    Eye,
-    ChevronRight,
-    Loader2,
-    Calendar,
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Card, CardContent, Button, Input, Badge } from '@/components/ui';
 import { cn, formatDate } from '@/lib/utils';
 import { DispatchModal } from '@/components/logistics';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
+import { useNavigate } from 'react-router-dom';
 
 interface BookingData {
     id: string;
@@ -36,21 +23,25 @@ interface BookingData {
 
 interface DispatchData {
     id: string;
-    bookingId: string;
-    bookingNumber: string;
-    driverName: string;
-    driverPhone: string;
-    truckPlate: string;
-    trailerPlate?: string;
-    containerNumber?: string;
-    sealNumber?: string;
-    pickupDatetime: string;
-    pickupLocation: string;
-    deliveryLocation: string;
+    booking_id: string;
+    booking_number: string;
+    shipment_number?: string;
+    origin_port?: string;
+    destination_port?: string;
+    driver_name: string;
+    driver_phone: string;
+    truck_plate: string;
+    trailer_plate?: string;
+    container_number?: string;
+    seal_number?: string;
+    pickup_datetime: string;
+    pickup_location: string;
+    delivery_location: string;
     status: string;
 }
 
 export function LogisticsPage() {
+    const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<string>('ALL');
     const [showDispatchModal, setShowDispatchModal] = useState(false);
@@ -69,13 +60,11 @@ export function LogisticsPage() {
         setLoading(true);
         try {
             // Fetch confirmed bookings
-            const bookingsRes = await fetch(`${API_URL}/api/bookings?status=CONFIRMED`);
-            const bookingsData = await bookingsRes.json();
+            const bookingsData = await fetchApi('/api/bookings?status=CONFIRMED');
             setConfirmedBookings(bookingsData.bookings || []);
 
             // Fetch dispatches
-            const dispatchRes = await fetch(`${API_URL}/api/truck-dispatches`);
-            const dispatchData = await dispatchRes.json();
+            const dispatchData = await fetchApi('/api/truck-dispatches');
             setDispatches(dispatchData.dispatches || []);
         } catch (error) {
             console.error('Failed to fetch logistics data:', error);
@@ -88,17 +77,17 @@ export function LogisticsPage() {
     };
 
     // Filter bookings awaiting dispatch (confirmed but no dispatch)
-    const dispatchedBookingIds = dispatches.map(d => d.bookingId);
+    const dispatchedBookingIds = dispatches.map(d => d.booking_id);
     const bookingsAwaitingDispatch = confirmedBookings.filter(
         b => !dispatchedBookingIds.includes(b.id)
     );
 
     const filteredDispatches = dispatches.filter(d => {
         const matchesSearch =
-            d.driverName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            d.bookingNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            d.containerNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            d.truckPlate?.toLowerCase().includes(searchQuery.toLowerCase());
+            d.driver_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            d.booking_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            d.container_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            d.truck_plate?.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesStatus = statusFilter === 'ALL' || d.status === statusFilter;
         return matchesSearch && matchesStatus;
     });
@@ -115,10 +104,10 @@ export function LogisticsPage() {
 
     const getStatusIcon = (status: string) => {
         switch (status) {
-            case 'SCHEDULED': return <Clock className="w-4 h-4" />;
-            case 'IN_TRANSIT': return <Truck className="w-4 h-4" />;
-            case 'COMPLETED': return <CheckCircle className="w-4 h-4" />;
-            default: return <AlertTriangle className="w-4 h-4" />;
+            case 'SCHEDULED': return '●';
+            case 'IN_TRANSIT': return '▶';
+            case 'COMPLETED': return '✓';
+            default: return '!';
         }
     };
 
@@ -178,16 +167,14 @@ export function LogisticsPage() {
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-[hsl(var(--foreground))] flex items-center gap-3">
-                            <Truck className="w-8 h-8" />
+                        <h1 className="text-2xl font-bold text-[hsl(var(--foreground))] tracking-tight">
                             Logistics & Dispatch
                         </h1>
-                        <p className="text-[hsl(var(--muted-foreground))] mt-1">
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-0.5">
                             Manage truck dispatches and container movements
                         </p>
                     </div>
-                    <Button onClick={() => handleNewDispatch()}>
-                        <Plus className="w-4 h-4 mr-2" />
+                    <Button size="sm" onClick={() => handleNewDispatch()}>
                         New Dispatch
                     </Button>
                 </div>
@@ -224,7 +211,7 @@ export function LogisticsPage() {
                         <CardContent className="p-4">
                             <div className="flex items-start gap-3">
                                 <div className="w-10 h-10 rounded-lg bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
-                                    <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                                    <span className="text-yellow-400 font-bold">!</span>
                                 </div>
                                 <div className="flex-1">
                                     <h3 className="font-semibold text-yellow-400 flex items-center gap-2">
@@ -244,7 +231,6 @@ export function LogisticsPage() {
                                             return (
                                                 <div key={booking.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--secondary))]">
                                                     <div className="flex items-center gap-3">
-                                                        <Package className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
                                                         <div>
                                                             <p className="font-medium text-[hsl(var(--foreground))]">{booking.booking_number}</p>
                                                             <p className="text-xs text-[hsl(var(--muted-foreground))]">
@@ -255,15 +241,12 @@ export function LogisticsPage() {
                                                     <div className="flex items-center gap-4">
                                                         {/* CY Closing Time */}
                                                         <div className="text-right">
-                                                            <div className="flex items-center gap-1">
-                                                                <Clock className="w-3 h-3 text-red-400" />
-                                                                <p className={cn(
-                                                                    "text-xs font-medium",
-                                                                    daysToCY !== null && daysToCY <= 2 ? "text-red-400" : "text-yellow-400"
-                                                                )}>
-                                                                    CY Close: {booking.cut_off_cy ? formatDate(booking.cut_off_cy) : 'N/A'}
-                                                                </p>
-                                                            </div>
+                                                            <p className={cn(
+                                                                "text-xs font-medium",
+                                                                daysToCY !== null && daysToCY <= 2 ? "text-red-400" : "text-yellow-400"
+                                                            )}>
+                                                                CY Close: {booking.cut_off_cy ? formatDate(booking.cut_off_cy) : 'N/A'}
+                                                            </p>
                                                             {daysToCY !== null && (
                                                                 <p className="text-xs text-[hsl(var(--muted-foreground))]">
                                                                     {daysToCY} day(s) left
@@ -273,12 +256,9 @@ export function LogisticsPage() {
 
                                                         {/* ETD */}
                                                         <div className="text-right border-l border-[hsl(var(--border))] pl-4">
-                                                            <div className="flex items-center gap-1">
-                                                                <Calendar className="w-3 h-3 text-blue-400" />
-                                                                <p className="text-xs font-medium text-[hsl(var(--foreground))]">
-                                                                    ETD: {booking.etd ? formatDate(booking.etd) : 'N/A'}
-                                                                </p>
-                                                            </div>
+                                                            <p className="text-xs font-medium text-[hsl(var(--foreground))]">
+                                                                ETD: {booking.etd ? formatDate(booking.etd) : 'N/A'}
+                                                            </p>
                                                             {daysToETD !== null && (
                                                                 <p className={cn(
                                                                     "text-xs",
@@ -293,7 +273,6 @@ export function LogisticsPage() {
                                                             size="sm"
                                                             onClick={() => handleNewDispatch(booking)}
                                                         >
-                                                            <Truck className="w-4 h-4 mr-1" />
                                                             Schedule
                                                         </Button>
                                                     </div>
@@ -314,7 +293,6 @@ export function LogisticsPage() {
                             <div className="flex-1">
                                 <Input
                                     placeholder="Search by driver, booking, container, truck plate..."
-                                    icon={<Search className="w-4 h-4" />}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -345,12 +323,12 @@ export function LogisticsPage() {
                                         {/* Left - Driver & Vehicle */}
                                         <div className="flex items-start gap-4 flex-1">
                                             <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white text-lg font-bold">
-                                                {dispatch.driverName?.split(' ').map(n => n[0]).join('') || 'DR'}
+                                                {dispatch.driver_name?.split(' ').map(n => n[0]).join('') || 'DR'}
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <h3 className="font-semibold text-[hsl(var(--foreground))]">
-                                                        {dispatch.driverName}
+                                                        {dispatch.driver_name}
                                                     </h3>
                                                     <Badge className={cn("text-xs", getStatusColor(dispatch.status))}>
                                                         {getStatusIcon(dispatch.status)}
@@ -358,40 +336,45 @@ export function LogisticsPage() {
                                                     </Badge>
                                                 </div>
                                                 <div className="flex flex-wrap gap-3 text-sm text-[hsl(var(--muted-foreground))]">
-                                                    <span className="flex items-center gap-1">
-                                                        <Phone className="w-3 h-3" />
-                                                        {dispatch.driverPhone}
-                                                    </span>
-                                                    <span className="flex items-center gap-1">
-                                                        <Truck className="w-3 h-3" />
-                                                        {dispatch.truckPlate}
-                                                    </span>
+                                                    <span>{dispatch.driver_phone}</span>
+                                                    <span>{dispatch.truck_plate}</span>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {/* Middle - Container & Route */}
+                                        {/* Middle - Container, Route & Shipment Context */}
                                         <div className="flex-1 lg:border-l lg:border-r border-[hsl(var(--border))] lg:px-6">
+                                            {/* Booking + Shipment Reference */}
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                <Badge className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">
+                                                    {dispatch.booking_number}
+                                                </Badge>
+                                                {dispatch.shipment_number && (
+                                                    <Badge className="text-xs bg-green-500/20 text-green-400 border-green-500/30">
+                                                        {dispatch.shipment_number}
+                                                    </Badge>
+                                                )}
+                                            </div>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div>
                                                     <p className="text-xs text-[hsl(var(--muted-foreground))]">Container</p>
                                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                                        {dispatch.containerNumber || 'N/A'}
+                                                        {dispatch.container_number || 'N/A'}
                                                     </p>
                                                 </div>
                                                 <div>
                                                     <p className="text-xs text-[hsl(var(--muted-foreground))]">Seal</p>
                                                     <p className="font-medium text-[hsl(var(--foreground))]">
-                                                        {dispatch.sealNumber || 'N/A'}
+                                                        {dispatch.seal_number || 'N/A'}
                                                     </p>
                                                 </div>
                                             </div>
                                             <div className="mt-2 flex items-center gap-2 text-sm">
-                                                <MapPin className="w-3 h-3 text-green-400" />
-                                                <span className="text-[hsl(var(--muted-foreground))]">{dispatch.pickupLocation}</span>
-                                                <ChevronRight className="w-3 h-3 text-[hsl(var(--muted-foreground))]" />
-                                                <MapPin className="w-3 h-3 text-red-400" />
-                                                <span className="text-[hsl(var(--muted-foreground))]">{dispatch.deliveryLocation}</span>
+                                                <span className="text-green-400 text-xs font-medium">From:</span>
+                                                <span className="text-[hsl(var(--muted-foreground))]">{dispatch.pickup_location}</span>
+                                                <span className="text-[hsl(var(--muted-foreground))]">→</span>
+                                                <span className="text-red-400 text-xs font-medium">To:</span>
+                                                <span className="text-[hsl(var(--muted-foreground))]">{dispatch.delivery_location}</span>
                                             </div>
                                         </div>
 
@@ -400,14 +383,13 @@ export function LogisticsPage() {
                                             <div className="text-right">
                                                 <p className="text-xs text-[hsl(var(--muted-foreground))]">Pickup</p>
                                                 <p className="font-medium text-[hsl(var(--foreground))]">
-                                                    {new Date(dispatch.pickupDatetime).toLocaleDateString('vi-VN')}
+                                                    {new Date(dispatch.pickup_datetime).toLocaleDateString('vi-VN')}
                                                 </p>
                                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                                                    {new Date(dispatch.pickupDatetime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                                                    {new Date(dispatch.pickup_datetime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                                                 </p>
                                             </div>
-                                            <Button variant="outline" size="sm">
-                                                <Eye className="w-4 h-4 mr-1" />
+                                            <Button variant="outline" size="sm" onClick={() => navigate(`/bookings/${dispatch.booking_id}`)}>
                                                 Details
                                             </Button>
                                         </div>
@@ -417,9 +399,8 @@ export function LogisticsPage() {
                         ))
                     ) : (
                         <div className="text-center py-12">
-                            <Truck className="w-12 h-12 mx-auto text-[hsl(var(--muted-foreground))] mb-4" />
                             <h3 className="text-lg font-medium text-[hsl(var(--foreground))]">No dispatches found</h3>
-                            <p className="text-[hsl(var(--muted-foreground))] mt-1">
+                            <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
                                 {confirmedBookings.length > 0
                                     ? 'Schedule a dispatch for confirmed bookings above'
                                     : 'Confirm bookings first to schedule dispatches'}

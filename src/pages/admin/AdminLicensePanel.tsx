@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Key, Copy, Ban, CheckCircle } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui';
+import { fetchApi } from '@/lib/api';
 
 interface License {
     id: string;
@@ -16,24 +16,15 @@ interface License {
     created_at: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || '${API_URL}';
+
 
 export function AdminLicensePanel() {
-    const { token } = useAuthStore();
     const [licenses, setLicenses] = useState<License[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchLicenses = async () => {
         try {
-            const response = await fetch(`${API_URL}/api/admin/licenses`, {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-
-            if (!response.ok) throw new Error('Failed to fetch licenses');
-
-            const data = await response.json();
+            const data = await fetchApi('/api/admin/licenses');
             setLicenses(data.licenses);
         } catch (err) {
             console.error(err);
@@ -56,16 +47,11 @@ export function AdminLicensePanel() {
         if (!reason) return;
 
         try {
-            const response = await fetch(`${API_URL}/api/admin/licenses/${licenseKey}/revoke`, {
+            await fetchApi(`/api/admin/licenses/${licenseKey}/revoke`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason }),
             });
-
-            if (!response.ok) throw new Error('Failed to revoke license');
 
             alert('License revoked successfully');
             await fetchLicenses();
@@ -137,8 +123,8 @@ export function AdminLicensePanel() {
                                         </td>
                                         <td className="px-4 py-4">
                                             <span className={`px-2 py-1 rounded text-xs font-medium ${license.type === 'PREMIUM' ? 'bg-purple-500/20 text-purple-400' :
-                                                    license.type === 'STANDARD' ? 'bg-blue-500/20 text-blue-400' :
-                                                        'bg-gray-500/20 text-gray-400'
+                                                license.type === 'STANDARD' ? 'bg-blue-500/20 text-blue-400' :
+                                                    'bg-gray-500/20 text-gray-400'
                                                 }`}>
                                                 {license.type}
                                             </span>

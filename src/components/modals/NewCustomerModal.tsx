@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Users, Loader2, User, Mail, Phone, Globe } from 'lucide-react';
 import { Button, Input } from '@/components/ui';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface NewCustomerModalProps {
@@ -39,17 +39,11 @@ export function NewCustomerModal({ isOpen, onClose, onSuccess }: NewCustomerModa
         setError(null);
 
         try {
-            const response = await fetch(`${API_URL}/api/customers`, {
+            await fetchApi('/api/customers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Failed to create customer');
-            }
 
             toast.success(`Customer "${formData.company_name}" created!`);
             onSuccess?.();

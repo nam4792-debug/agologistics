@@ -5,16 +5,13 @@ import {
     RefreshCw,
     Database,
     FileText,
-    CheckCircle,
-    AlertCircle,
-    ExternalLink,
     Loader2,
     Clock,
 } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Badge } from '@/components/ui';
 import { cn, formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
-import { API_URL } from '@/lib/api';
+import { fetchApi } from '@/lib/api';
 
 interface SyncStatus {
     connected: boolean;
@@ -40,6 +37,8 @@ export function IntegrationsPanel() {
     const [status, setStatus] = useState<SyncStatus | null>(null);
     const [backups, setBackups] = useState<Backup[]>([]);
 
+
+
     // Load status on mount
     useEffect(() => {
         loadStatus();
@@ -50,7 +49,6 @@ export function IntegrationsPanel() {
         const connectionStatus = params.get('status');
         if (connectionStatus === 'connected') {
             toast.success('Connected to Google Drive successfully!');
-            // Clear URL params
             window.history.replaceState({}, '', '/settings?tab=integrations');
             loadStatus();
         } else if (connectionStatus === 'error') {
@@ -61,8 +59,7 @@ export function IntegrationsPanel() {
 
     const loadStatus = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/sync/status`);
-            const data = await res.json();
+            const data = await fetchApi('/api/sync/status');
             if (data.success) {
                 setStatus(data.status);
             }
@@ -75,8 +72,7 @@ export function IntegrationsPanel() {
 
     const loadBackups = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/sync/backups`);
-            const data = await res.json();
+            const data = await fetchApi('/api/sync/backups');
             if (data.success) {
                 setBackups(data.backups || []);
             }
@@ -88,10 +84,8 @@ export function IntegrationsPanel() {
     const handleConnect = async () => {
         setConnecting(true);
         try {
-            const res = await fetch(`${API_URL}/api/sync/connect`);
-            const data = await res.json();
+            const data = await fetchApi('/api/sync/connect');
             if (data.authUrl) {
-                // Open Google OAuth in new window
                 window.location.href = data.authUrl;
             } else {
                 toast.error(data.error || 'Failed to initiate connection');
@@ -105,10 +99,8 @@ export function IntegrationsPanel() {
 
     const handleDisconnect = async () => {
         if (!confirm('Are you sure you want to disconnect Google Drive?')) return;
-
         try {
-            const res = await fetch(`${API_URL}/api/sync/disconnect`, { method: 'POST' });
-            const data = await res.json();
+            const data = await fetchApi('/api/sync/disconnect', { method: 'POST' });
             if (data.success) {
                 toast.success('Disconnected from Google Drive');
                 loadStatus();
@@ -121,8 +113,7 @@ export function IntegrationsPanel() {
     const handleBackup = async () => {
         setBackingUp(true);
         try {
-            const res = await fetch(`${API_URL}/api/sync/backup`, { method: 'POST' });
-            const data = await res.json();
+            const data = await fetchApi('/api/sync/backup', { method: 'POST' });
             if (data.success) {
                 toast.success('Database backup completed!');
                 loadBackups();
@@ -140,8 +131,7 @@ export function IntegrationsPanel() {
     const handleSyncDocuments = async () => {
         setSyncing(true);
         try {
-            const res = await fetch(`${API_URL}/api/sync/documents`, { method: 'POST' });
-            const data = await res.json();
+            const data = await fetchApi('/api/sync/documents', { method: 'POST' });
             if (data.success) {
                 toast.success(data.message);
                 loadStatus();
@@ -160,6 +150,8 @@ export function IntegrationsPanel() {
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     };
+
+
 
     if (loading) {
         return (
@@ -197,7 +189,7 @@ export function IntegrationsPanel() {
                                             ? "bg-green-500/20 text-green-400 border-green-500/30"
                                             : "bg-gray-500/20 text-gray-400 border-gray-500/30"
                                     )}>
-                                        {status?.connected ? 'Connected' : 'Not Connected'}
+                                        {status?.connected ? 'Connected' : 'Not connected'}
                                     </Badge>
                                 </CardTitle>
                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -205,91 +197,59 @@ export function IntegrationsPanel() {
                                 </p>
                             </div>
                         </div>
-                        {status?.connected ? (
-                            <Button variant="outline" onClick={handleDisconnect}>
-                                <CloudOff className="w-4 h-4 mr-2" />
-                                Disconnect
-                            </Button>
-                        ) : (
-                            <Button onClick={handleConnect} disabled={connecting}>
-                                {connecting ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        Connecting...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Cloud className="w-4 h-4 mr-2" />
-                                        Connect Google Drive
-                                    </>
-                                )}
-                            </Button>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {status?.connected ? (
+                                <Button variant="outline" size="sm" onClick={handleDisconnect}>
+                                    Disconnect
+                                </Button>
+                            ) : (
+                                <Button onClick={handleConnect} disabled={connecting}>
+                                    {connecting ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Connecting...</>
+                                    ) : (
+                                        <><Cloud className="w-4 h-4 mr-2" /> Connect</>
+                                    )}
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </CardHeader>
+
                 {status?.connected && (
                     <CardContent className="border-t border-[hsl(var(--border))]">
-                        {/* Sync Stats */}
                         <div className="grid grid-cols-3 gap-4 py-4">
                             <div className="text-center">
-                                <p className="text-2xl font-bold text-[hsl(var(--foreground))]">
-                                    {status.syncedDocuments}/{status.totalDocuments}
-                                </p>
+                                <p className="text-2xl font-bold text-[hsl(var(--foreground))]">{status.syncedDocuments}/{status.totalDocuments}</p>
                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">Documents Synced</p>
                             </div>
                             <div className="text-center">
-                                <p className="text-2xl font-bold text-[hsl(var(--foreground))]">
-                                    {status.totalBackups}
-                                </p>
-                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Cloud Backups</p>
+                                <p className="text-2xl font-bold text-[hsl(var(--foreground))]">{status.totalBackups}</p>
+                                <p className="text-sm text-[hsl(var(--muted-foreground))]">Backups</p>
                             </div>
                             <div className="text-center">
-                                <p className="text-sm font-medium text-[hsl(var(--foreground))]">
-                                    {status.lastSync ? formatDate(status.lastSync) : 'Never'}
-                                </p>
+                                <p className="text-2xl font-bold text-[hsl(var(--foreground))]">{status.lastSync ? formatDate(status.lastSync) : 'Never'}</p>
                                 <p className="text-sm text-[hsl(var(--muted-foreground))]">Last Sync</p>
                             </div>
                         </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex gap-3 pt-4 border-t border-[hsl(var(--border))]">
-                            <Button
-                                variant="outline"
-                                onClick={handleSyncDocuments}
-                                disabled={syncing}
-                                className="flex-1"
-                            >
+                        <div className="flex gap-3 pt-2">
+                            <Button variant="outline" className="flex-1" onClick={handleSyncDocuments} disabled={syncing}>
                                 {syncing ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        Syncing...
-                                    </>
+                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Syncing...</>
                                 ) : (
-                                    <>
-                                        <FileText className="w-4 h-4 mr-2" />
-                                        Sync Documents Now
-                                    </>
+                                    <><RefreshCw className="w-4 h-4 mr-2" /> Sync Documents</>
                                 )}
                             </Button>
-                            <Button
-                                variant="outline"
-                                onClick={handleBackup}
-                                disabled={backingUp}
-                                className="flex-1"
-                            >
+                            <Button variant="outline" className="flex-1" onClick={handleBackup} disabled={backingUp}>
                                 {backingUp ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        Backing up...
-                                    </>
+                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Backing up...</>
                                 ) : (
-                                    <>
-                                        <Database className="w-4 h-4 mr-2" />
-                                        Backup Database
-                                    </>
+                                    <><Database className="w-4 h-4 mr-2" /> Backup Database</>
                                 )}
                             </Button>
-                            <Button variant="outline" onClick={() => { loadStatus(); loadBackups(); }}>
+                            <Button variant="ghost" size="sm"
+                                onClick={() => { loadStatus(); loadBackups(); }}
+                            >
                                 <RefreshCw className="w-4 h-4" />
                             </Button>
                         </div>
@@ -297,63 +257,27 @@ export function IntegrationsPanel() {
                 )}
             </Card>
 
-            {/* Setup Instructions (when not connected) */}
-            {!status?.connected && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <AlertCircle className="w-5 h-5 text-yellow-400" />
-                            Setup Instructions
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <ol className="list-decimal list-inside space-y-2 text-sm text-[hsl(var(--muted-foreground))]">
-                            <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener" className="text-[hsl(var(--primary))] hover:underline">Google Cloud Console <ExternalLink className="w-3 h-3 inline" /></a></li>
-                            <li>Create a new project or select existing</li>
-                            <li>Enable <strong>Google Drive API</strong></li>
-                            <li>Go to <strong>APIs & Services → Credentials</strong></li>
-                            <li>Create <strong>OAuth 2.0 Client ID</strong> (Desktop App type)</li>
-                            <li>Add redirect URI: <code className="bg-[hsl(var(--secondary))] px-2 py-0.5 rounded">${API_URL}/api/sync/callback</code></li>
-                            <li>Download JSON and save as <code className="bg-[hsl(var(--secondary))] px-2 py-0.5 rounded">server/config/google-credentials.json</code></li>
-                            <li>Restart the server and click "Connect Google Drive"</li>
-                        </ol>
-                    </CardContent>
-                </Card>
-            )}
-
             {/* Backup History */}
             {status?.connected && backups.length > 0 && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-[hsl(var(--primary))]" />
-                            Backup History
+                            <Clock className="w-5 h-5" />
+                            Recent Backups
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-2">
-                            {backups.slice(0, 10).map((backup) => (
-                                <div
-                                    key={backup.id}
-                                    className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--secondary))]"
-                                >
+                            {backups.slice(0, 5).map((backup) => (
+                                <div key={backup.id} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--secondary))]">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-lg bg-[hsl(var(--primary))]/20 flex items-center justify-center">
-                                            <Database className="w-4 h-4 text-[hsl(var(--primary))]" />
-                                        </div>
+                                        <Database className="w-4 h-4 text-blue-400" />
                                         <div>
-                                            <p className="text-sm font-medium text-[hsl(var(--foreground))]">
-                                                {backup.file_name}
-                                            </p>
-                                            <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                                                {formatDate(backup.created_at)} • {formatFileSize(backup.file_size_bytes)}
-                                            </p>
+                                            <p className="text-sm font-medium text-[hsl(var(--foreground))]">{backup.file_name}</p>
+                                            <p className="text-xs text-[hsl(var(--muted-foreground))]">{formatDate(backup.created_at)} • {formatFileSize(backup.file_size_bytes)}</p>
                                         </div>
                                     </div>
-                                    <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                                        <CheckCircle className="w-3 h-3 mr-1" />
-                                        Synced
-                                    </Badge>
+                                    <Badge className="text-xs bg-blue-500/20 text-blue-400 border-blue-500/30">{backup.backup_type}</Badge>
                                 </div>
                             ))}
                         </div>

@@ -18,11 +18,13 @@ export function formatNumber(num: number): string {
     return new Intl.NumberFormat('en-US').format(num);
 }
 
-export function formatWeight(kg: number): string {
-    if (kg >= 1000) {
-        return `${(kg / 1000).toFixed(1)}T`;
+export function formatWeight(kg: number | string | null | undefined): string {
+    const value = Number(kg);
+    if (isNaN(value) || kg === null || kg === undefined) return '0kg';
+    if (value >= 1000) {
+        return `${(value / 1000).toFixed(1)}T`;
     }
-    return `${kg.toFixed(1)}kg`;
+    return `${value.toFixed(1)}kg`;
 }
 
 export function formatDate(date: Date | string | null | undefined): string {
