@@ -98,7 +98,7 @@ export function Dashboard() {
             console.error('Error fetching dashboard data:', error);
             setMetrics({
                 shipments: { total: 0, booked: 0, docInProgress: 0, readyToLoad: 0, loading: 0, customs: 0, inTransit: 0, arrived: 0, delivered: 0, activeCount: 0, completedThisMonth: 0, completedLastMonth: 0, onTimeRate: null },
-                bookings: { total: 0, fcl: 0, air: 0, pending: 0, confirmed: 0, withoutDispatch: 0 },
+                bookings: { total: 0, fcl: 0, air: 0, pending: 0, confirmed: 0, allocated: 0, withoutDispatch: 0 },
                 documents: { total: 0, validated: 0, awaitingReview: 0, shipmentsWithoutDocs: 0, shipmentsWithUnvalidatedDocs: 0 },
                 alerts: { total: 0, critical: 0, unread: 0 },
                 deadlines: { upcoming: 0, urgent: 0, nearestDays: null },

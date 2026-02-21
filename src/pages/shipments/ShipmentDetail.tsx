@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { Loader2, X } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, Badge, Input, Select } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, Input, Select } from '@/components/ui';
 import { formatCurrency, formatDate, formatWeight, cn } from '@/lib/utils';
 import { ShipmentAIPanel } from '@/components/logistics';
 import type { ShipmentStatus } from '@/types';

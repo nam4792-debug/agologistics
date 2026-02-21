@@ -85,7 +85,7 @@ export function ShipmentAIPanel({
 }) {
     const [auditPhase, setAuditPhase] = useState<AuditPhase>('idle');
     const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
-    const [auditRawText, setAuditRawText] = useState<string>('');
+    const [_auditRawText, setAuditRawText] = useState<string>('');
     const [auditMeta, setAuditMeta] = useState<{ docsCount: number; tokensUsed: number; cached: number; fresh: number } | null>(null);
     const [auditError, setAuditError] = useState<string>('');
 
