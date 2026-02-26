@@ -275,9 +275,9 @@ async function seedRichData() {
         ];
         for (const t of tasks) {
             await client.query(
-                `INSERT INTO tasks (task_type, title, status, priority, deadline, assigned_to, created_by, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-                [t.tp, t.ti, t.s, t.p, fmtTs(addDays(today, t.d)), adminId, adminId, fmtTs(subDays(today, 3))]
+                `INSERT INTO tasks (task_type, title, status, priority, deadline, assigned_to, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+                [t.tp, t.ti, t.s, t.p, fmtTs(addDays(today, t.d)), adminId, fmtTs(subDays(today, 3))]
             );
         }
 
