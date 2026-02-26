@@ -74,7 +74,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <div className="flex h-16 items-center justify-between px-4 border-b border-white/10">
                 {!collapsed && (
                     <div className="flex items-center gap-2">
-                        <img src="/logo-agofruit.png" alt="Ago Fruit" className="w-9 h-9 rounded-lg object-contain" />
+                        <img src="./logo-agofruit.png" alt="Ago Fruit" className="w-9 h-9 rounded-lg object-contain" />
                         <div>
                             <h1 className="text-sm font-bold text-white leading-tight">Ago Import Export</h1>
                             <p className="text-[10px] text-emerald-300/60 -mt-0.5">Co.,Ltd</p>
@@ -82,7 +82,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     </div>
                 )}
                 {collapsed && (
-                    <img src="/logo-agofruit.png" alt="Ago Fruit" className="w-8 h-8 rounded-lg object-contain mx-auto" />
+                    <img src="./logo-agofruit.png" alt="Ago Fruit" className="w-8 h-8 rounded-lg object-contain mx-auto" />
                 )}
             </div>
 

@@ -44,7 +44,7 @@ export function LoginPage() {
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4 bg-white/10 backdrop-blur-sm border border-white/10 shadow-lg">
-                        <img src="/logo-agofruit.png" alt="Ago Fruit" className="w-16 h-16 object-contain" />
+                        <img src="./logo-agofruit.png" alt="Ago Fruit" className="w-16 h-16 object-contain" />
                     </div>
                     <h1 className="text-2xl font-bold text-white">Ago Import Export</h1>
                     <p className="text-emerald-200/70 mt-1 text-sm">Co.,Ltd — Fruit Export Management</p>
