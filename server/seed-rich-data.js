@@ -58,7 +58,6 @@ async function seedRichData() {
                 const res = await client.query(
                     `INSERT INTO forwarders (company_name, provider_code, contact_name, email, phone, address, grade, on_time_rate, doc_accuracy_rate, cost_score)
                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                     ON CONFLICT (provider_code) DO UPDATE SET company_name = EXCLUDED.company_name
                      RETURNING id`,
                     [f.name, f.code, f.contact, f.email, f.phone, f.address, f.grade, f.onTime, f.docAcc, f.cost]
                 );
@@ -194,15 +193,13 @@ async function seedRichData() {
                 const cutOffSI = subtractDays(etd, 5 + Math.floor(Math.random() * 3));
                 const cutOffVGM = subtractDays(etd, 3 + Math.floor(Math.random() * 2));
                 const cutOffCY = subtractDays(etd, 2 + Math.floor(Math.random() * 2));
-                await client.query(
-                    `INSERT INTO booking_deadlines (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
-                     VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (booking_id) DO UPDATE SET
-                        cut_off_si = EXCLUDED.cut_off_si,
-                        cut_off_vgm = EXCLUDED.cut_off_vgm,
-                        cut_off_cy = EXCLUDED.cut_off_cy`,
-                    [bookingId, fmtTs(cutOffSI), fmtTs(cutOffVGM), fmtTs(cutOffCY)]
-                ).catch(e => { /* skip if no unique constraint */ });
+                try {
+                    await client.query(
+                        `INSERT INTO booking_deadlines (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
+                         VALUES ($1, $2, $3, $4)`,
+                        [bookingId, fmtTs(cutOffSI), fmtTs(cutOffVGM), fmtTs(cutOffCY)]
+                    );
+                } catch (e) { /* deadline already exists */ }
             }
         }
 
@@ -240,13 +237,13 @@ async function seedRichData() {
 
             // Insert urgent deadlines
             const siDate = addDays(today, ub.siOffset);
-            await client.query(
-                `INSERT INTO booking_deadlines (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
-                 VALUES ($1, $2, $3, $4)
-                 ON CONFLICT (booking_id) DO UPDATE SET
-                    cut_off_si = EXCLUDED.cut_off_si, cut_off_vgm = EXCLUDED.cut_off_vgm, cut_off_cy = EXCLUDED.cut_off_cy`,
-                [res.rows[0].id, fmtTs(siDate), fmtTs(addDays(siDate, 1)), fmtTs(addDays(siDate, 2))]
-            ).catch(e => { /* skip */ });
+            try {
+                await client.query(
+                    `INSERT INTO booking_deadlines (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
+                     VALUES ($1, $2, $3, $4)`,
+                    [res.rows[0].id, fmtTs(siDate), fmtTs(addDays(siDate, 1)), fmtTs(addDays(siDate, 2))]
+                );
+            } catch (e) { /* deadline exists */ }
         }
 
         // ========================================
