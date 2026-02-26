@@ -1,6 +1,6 @@
 /**
- * Rich Sample Data Seed — for Analytics, Risk, and Report pages
- * Designed to populate 6 months of data for leadership presentation.
+ * Rich Sample Data Seed — Analytics, Risk, Reports
+ * Creates 6 months of data for leadership presentation.
  */
 
 const pool = require('./src/config/database');
@@ -10,100 +10,88 @@ async function seedRichData() {
     try {
         await client.query('BEGIN');
 
-        // Get admin user
         const adminResult = await client.query("SELECT id FROM users WHERE email = 'admin@logispro.vn'");
-        if (adminResult.rows.length === 0) {
-            throw new Error('Admin user not found. Run /api/seed/init first.');
-        }
+        if (adminResult.rows.length === 0) throw new Error('Admin not found. Run /api/seed/init first.');
         const adminId = adminResult.rows[0].id;
 
-        // Get existing customer IDs — create if needed
+        // Unique suffix to avoid conflicts
+        const ts = Date.now().toString(36).substring(2, 6);
+
+        // Get or create customers
         let customerResult = await client.query('SELECT id FROM customers ORDER BY created_at');
         let customerIds = customerResult.rows.map(r => r.id);
-
         if (customerIds.length === 0) {
-            const newCustomers = [
-                { code: 'CUST-JP001', name: 'Tokyo Fresh Fruits Co., Ltd', contact: 'Tanaka Yuki', email: 'tanaka@tokyofresh.jp', phone: '+81-3-1234-5678', address: '2-1-1 Tsukiji, Chuo-ku, Tokyo', country: 'Japan' },
-                { code: 'CUST-KR001', name: 'Seoul Premium Produce', contact: 'Kim Min-ho', email: 'kim@seoulpremium.kr', phone: '+82-2-345-6789', address: '123 Gangnam-daero, Seoul', country: 'South Korea' },
-                { code: 'CUST-SG001', name: 'Singapore Fresh Market Pte Ltd', contact: 'Lim Wei Ming', email: 'weiming@sgfresh.sg', phone: '+65-6234-5678', address: '1 Pasir Panjang Rd, Singapore', country: 'Singapore' },
-                { code: 'CUST-NL001', name: 'Holland Fresh Import BV', contact: 'Jan de Vries', email: 'j.devries@hollandfresh.nl', phone: '+31-10-234-5678', address: 'Spaanse Polder 12, Rotterdam', country: 'Netherlands' },
-                { code: 'CUST-US001', name: 'California Exotic Fruits Inc.', contact: 'Michael Chen', email: 'mchen@calexotic.com', phone: '+1-213-456-7890', address: '456 Market St, Los Angeles, CA', country: 'USA' },
-                { code: 'CUST-AE001', name: 'Dubai Fresh Trading LLC', contact: 'Ahmed Al-Rashid', email: 'ahmed@dubaifresh.ae', phone: '+971-4-345-6789', address: 'Al Aweer Central Market, Dubai', country: 'UAE' },
-                { code: 'CUST-AU001', name: 'Melbourne Tropical Imports Pty', contact: 'Sarah Thompson', email: 'sarah@meltropical.com.au', phone: '+61-3-9876-5432', address: '22 Market Lane, Melbourne VIC', country: 'Australia' },
-                { code: 'CUST-CN001', name: 'Guangzhou Fruit Trading Co.', contact: 'Wang Lei', email: 'wanglei@gzfruit.cn', phone: '+86-20-8765-4321', address: 'Jiangnan Fruit Market, Guangzhou', country: 'China' },
+            const custs = [
+                ['CUST-' + ts + '1', 'Tokyo Fresh Fruits Co.', 'Tanaka Yuki', 'tanaka@tokyofresh.jp', '+81-3-1234', 'Tokyo', 'Japan'],
+                ['CUST-' + ts + '2', 'Seoul Premium Produce', 'Kim Min-ho', 'kim@seoul.kr', '+82-2-345', 'Seoul', 'South Korea'],
+                ['CUST-' + ts + '3', 'Singapore Fresh Market', 'Lim Wei', 'lim@sg.sg', '+65-6234', 'Singapore', 'Singapore'],
+                ['CUST-' + ts + '4', 'Holland Fresh Import BV', 'Jan de Vries', 'jan@hfi.nl', '+31-10-234', 'Rotterdam', 'Netherlands'],
+                ['CUST-' + ts + '5', 'California Exotic Fruits', 'Michael Chen', 'mc@cal.com', '+1-213-456', 'LA', 'USA'],
+                ['CUST-' + ts + '6', 'Dubai Fresh Trading', 'Ahmed', 'ahmed@dft.ae', '+971-4-345', 'Dubai', 'UAE'],
+                ['CUST-' + ts + '7', 'Melbourne Tropical Imports', 'Sarah', 'sarah@mti.au', '+61-3-987', 'Melbourne', 'Australia'],
+                ['CUST-' + ts + '8', 'Guangzhou Fruit Trading', 'Wang Lei', 'wang@gzf.cn', '+86-20-876', 'Guangzhou', 'China'],
             ];
-            for (const c of newCustomers) {
-                const res = await client.query(
-                    `INSERT INTO customers (customer_code, company_name, contact_name, email, phone, address, country)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)
-                     ON CONFLICT (customer_code) DO UPDATE SET company_name = EXCLUDED.company_name
-                     RETURNING id`,
-                    [c.code, c.name, c.contact, c.email, c.phone, c.address, c.country]
+            for (const [code, name, contact, email, phone, addr, country] of custs) {
+                const r = await client.query(
+                    `INSERT INTO customers (customer_code, company_name, contact_name, email, phone, address, country) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+                    [code, name, contact, email, phone, addr, country]
                 );
-                customerIds.push(res.rows[0].id);
+                customerIds.push(r.rows[0].id);
             }
         }
 
-        // Get forwarder IDs
+        // Get or create forwarders
         let fwdResult = await client.query('SELECT id FROM forwarders ORDER BY created_at');
         let forwarderIds = fwdResult.rows.map(r => r.id);
-
         if (forwarderIds.length === 0) {
-            const forwarders = [
-                { name: 'Vinalink Logistics JSC', code: 'FWD-VINALINK', contact: 'Nguyen Van Thanh', email: 'thanh@vinalink.com.vn', phone: '+84-28-3822-1234', address: '28 Le Duan, D.1, HCMC', grade: 'A', onTime: 95.0, docAcc: 98.0, cost: 85.0 },
-                { name: 'Gemadept Shipping', code: 'FWD-GEMADEPT', contact: 'Tran Minh Duc', email: 'duc.tm@gemadept.com.vn', phone: '+84-28-3823-5678', address: '6 Le Thanh Ton, D.1, HCMC', grade: 'B', onTime: 88.0, docAcc: 90.0, cost: 90.0 },
-                { name: 'Bee Logistics Corp', code: 'FWD-BEE', contact: 'Le Hoang Nam', email: 'nam@beelogistics.com', phone: '+84-28-3825-9999', address: '123 Nguyen Hue, D.1, HCMC', grade: 'A', onTime: 92.0, docAcc: 95.0, cost: 82.0 },
+            const fwds = [
+                ['Vinalink Logistics', 'FWD-' + ts + '1', 'Nguyen Van Thanh', 'A', 95, 98, 85],
+                ['Gemadept Shipping', 'FWD-' + ts + '2', 'Tran Minh Duc', 'B', 88, 90, 90],
+                ['Bee Logistics Corp', 'FWD-' + ts + '3', 'Le Hoang Nam', 'A', 92, 95, 82],
             ];
-            for (const f of forwarders) {
-                const res = await client.query(
-                    `INSERT INTO forwarders (company_name, provider_code, contact_name, email, phone, address, grade, on_time_rate, doc_accuracy_rate, cost_score)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                     RETURNING id`,
-                    [f.name, f.code, f.contact, f.email, f.phone, f.address, f.grade, f.onTime, f.docAcc, f.cost]
+            for (const [name, code, contact, grade, onTime, docAcc, cost] of fwds) {
+                const r = await client.query(
+                    `INSERT INTO forwarders (company_name, provider_code, contact_name, grade, on_time_rate, doc_accuracy_rate, cost_score) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+                    [name, code, contact, grade, onTime, docAcc, cost]
                 );
-                forwarderIds.push(res.rows[0].id);
+                forwarderIds.push(r.rows[0].id);
             }
         }
 
         // Helpers
         const today = new Date();
-        const addDays = (d, days) => { const r = new Date(d); r.setDate(r.getDate() + days); return r; };
-        const subtractDays = (d, days) => addDays(d, -days);
+        const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+        const subDays = (d, n) => addDays(d, -n);
         const fmt = (d) => d.toISOString().split('T')[0];
         const fmtTs = (d) => d.toISOString().replace('T', ' ').substring(0, 19);
-        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
         const ports = [
-            { origin: 'Cat Lai, HCMC', dest: 'Tokyo Port', country: 'Japan' },
-            { origin: 'Cat Lai, HCMC', dest: 'Busan Port', country: 'South Korea' },
-            { origin: 'Cat Lai, HCMC', dest: 'Singapore PSA', country: 'Singapore' },
-            { origin: 'Cat Lai, HCMC', dest: 'Rotterdam Europoort', country: 'Netherlands' },
-            { origin: 'Tan Son Nhat, HCMC', dest: 'Los Angeles LAX', country: 'USA' },
-            { origin: 'Tan Son Nhat, HCMC', dest: 'Dubai DWC', country: 'UAE' },
-            { origin: 'Cat Lai, HCMC', dest: 'Melbourne Port', country: 'Australia' },
-            { origin: 'Hai Phong Port', dest: 'Guangzhou Nansha', country: 'China' },
+            { o: 'Cat Lai, HCMC', d: 'Tokyo Port', c: 'Japan' },
+            { o: 'Cat Lai, HCMC', d: 'Busan Port', c: 'South Korea' },
+            { o: 'Cat Lai, HCMC', d: 'Singapore PSA', c: 'Singapore' },
+            { o: 'Cat Lai, HCMC', d: 'Rotterdam Europoort', c: 'Netherlands' },
+            { o: 'Tan Son Nhat, HCMC', d: 'Los Angeles LAX', c: 'USA' },
+            { o: 'Tan Son Nhat, HCMC', d: 'Dubai DWC', c: 'UAE' },
+            { o: 'Cat Lai, HCMC', d: 'Melbourne Port', c: 'Australia' },
+            { o: 'Hai Phong Port', d: 'Guangzhou Nansha', c: 'China' },
         ];
-
         const vessels = ['EVER GIVEN', 'MSC OSCAR', 'COSCO FORTUNE', 'ONE STORK', 'OOCL HONG KONG', 'CMA CGM MARCO POLO', 'MAERSK HONAM'];
         const flights = ['VN302', 'KE682', 'SQ176', 'EK392', 'JL752', 'TK164', 'QF88'];
         const shippingLines = ['Evergreen', 'MSC', 'COSCO', 'ONE', 'OOCL', 'CMA CGM', 'Maersk'];
-        const airlines = ['Vietnam Airlines', 'Korean Air', 'Singapore Airlines', 'Emirates', 'JAL', 'Turkish Airlines', 'Qantas'];
+        const airlines = ['Vietnam Airlines', 'Korean Air', 'Singapore Airlines', 'Emirates', 'JAL', 'Turkish Airlines'];
         const containerTypes = ['20RF', '40RF', '40HC'];
-        const cargoDescs = [
-            'Fresh Dragon Fruit (Hylocereus)', 'Fresh Rambutan', 'Fresh Mango (Cat Hoa Loc)',
-            'Fresh Passion Fruit', 'Fresh Lychee (Thieu)', 'Fresh Longan', 'Dried Jackfruit Chips',
-            'Fresh Star Fruit', 'Fresh Pomelo (Nam Roi)', 'Frozen Durian Puree',
-        ];
+        const cargos = ['Fresh Dragon Fruit', 'Fresh Rambutan', 'Fresh Mango', 'Fresh Passion Fruit', 'Fresh Lychee', 'Fresh Longan', 'Dried Jackfruit', 'Fresh Pomelo', 'Frozen Durian'];
         const incoterms = ['FOB', 'CFR', 'CIF', 'EXW'];
+        const vendorNames = ['Vinalink Logistics', 'Gemadept Shipping', 'Bee Logistics', 'Cat Lai Terminal', 'TBS Customs Broker'];
 
-        // ========================================
-        // CREATE 25 SHIPMENTS across 6 months
-        // ========================================
-        const shipmentData = [];
+        // ══════════════════════════════════════
+        // 25 SHIPMENTS (6 months)
+        // ══════════════════════════════════════
+        const shipmentIds = [];
         for (let i = 0; i < 25; i++) {
-            const monthOffset = Math.floor(i / 5);
-            const daysAgo = monthOffset * 30 + Math.floor(Math.random() * 25);
-            const createdAt = subtractDays(today, daysAgo);
+            const daysAgo = Math.floor(i / 5) * 30 + Math.floor(Math.random() * 25);
+            const created = subDays(today, daysAgo);
             const port = ports[i % ports.length];
             const isFCL = Math.random() > 0.3;
             const type = isFCL ? 'FCL' : 'AIR';
@@ -113,40 +101,33 @@ async function seedRichData() {
             else if (daysAgo > 90) status = pick(['Delivered', 'Arrived']);
             else if (daysAgo > 60) status = pick(['In Transit', 'Arrived', 'Delivered']);
             else if (daysAgo > 30) status = pick(['In Transit', 'Customs', 'Arrived']);
-            else status = pick(['Booked', 'Doc In Progress', 'Ready to Load', 'Loading', 'In Transit']);
+            else status = pick(['Booked', 'Doc In Progress', 'Ready to Load', 'In Transit']);
 
-            const etd = addDays(createdAt, 5 + Math.floor(Math.random() * 10));
-            const transitDays = isFCL ? (15 + Math.floor(Math.random() * 20)) : (2 + Math.floor(Math.random() * 5));
-            const eta = addDays(etd, transitDays);
-            const totalCost = isFCL ? (2500 + Math.floor(Math.random() * 4000)) : (3500 + Math.floor(Math.random() * 6000));
-            const weight = isFCL ? (5000 + Math.floor(Math.random() * 20000)) : (500 + Math.floor(Math.random() * 4000));
+            const etd = addDays(created, 5 + Math.floor(Math.random() * 10));
+            const eta = addDays(etd, isFCL ? 15 + Math.floor(Math.random() * 20) : 2 + Math.floor(Math.random() * 5));
+            const cost = isFCL ? 2500 + Math.floor(Math.random() * 4000) : 3500 + Math.floor(Math.random() * 6000);
+            const weight = isFCL ? 5000 + Math.floor(Math.random() * 20000) : 500 + Math.floor(Math.random() * 4000);
 
-            const shipNum = `SHP-R-${String(i + 1).padStart(3, '0')}`;
-
-            const res = await client.query(
+            const r = await client.query(
                 `INSERT INTO shipments (shipment_number, type, status, customer_id, forwarder_id,
                     origin_port, destination_port, destination_country,
                     cargo_description, cargo_weight_kg, incoterm,
                     etd, eta, total_cost_usd, created_by, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-                 ON CONFLICT (shipment_number) DO UPDATE SET status = EXCLUDED.status
-                 RETURNING id`,
-                [shipNum, type, status, pick(customerIds), pick(forwarderIds),
-                    port.origin, port.dest, port.country,
-                    pick(cargoDescs), weight, pick(incoterms),
-                    fmt(etd), fmt(eta), totalCost, adminId, fmtTs(createdAt)]
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
+                [`SHP-${ts}-${String(i + 1).padStart(3, '0')}`, type, status, pick(customerIds), pick(forwarderIds),
+                port.o, port.d, port.c, pick(cargos), weight, pick(incoterms),
+                fmt(etd), fmt(eta), cost, adminId, fmtTs(created)]
             );
-            shipmentData.push({ id: res.rows[0].id, type, shipNum, createdAt });
+            shipmentIds.push(r.rows[0].id);
         }
 
-        // ========================================
-        // CREATE 35 BOOKINGS across 6 months (NO cut_off columns in bookings table)
-        // ========================================
-        const bookingData = [];
+        // ══════════════════════════════════════
+        // 35 BOOKINGS (6 months) + 5 URGENT
+        // ══════════════════════════════════════
+        const bookingIds = [];
         for (let i = 0; i < 35; i++) {
-            const monthOffset = Math.floor(i / 6);
-            const daysAgo = monthOffset * 30 + Math.floor(Math.random() * 28);
-            const createdAt = subtractDays(today, daysAgo);
+            const daysAgo = Math.floor(i / 6) * 30 + Math.floor(Math.random() * 28);
+            const created = subDays(today, daysAgo);
             const isFCL = Math.random() > 0.3;
             const type = isFCL ? 'FCL' : 'AIR';
             const port = ports[i % ports.length];
@@ -157,222 +138,177 @@ async function seedRichData() {
             else if (daysAgo > 30) status = pick(['CONFIRMED', 'ALLOCATED', 'PENDING']);
             else status = pick(['PENDING', 'PENDING', 'CONFIRMED', 'ALLOCATED']);
 
-            const etd = addDays(createdAt, 7 + Math.floor(Math.random() * 14));
-            const transitDays = isFCL ? (15 + Math.floor(Math.random() * 20)) : (2 + Math.floor(Math.random() * 5));
-            const eta = addDays(etd, transitDays);
-            const freightRate = isFCL ? (1800 + Math.floor(Math.random() * 3200)) : (2500 + Math.floor(Math.random() * 5000));
+            const etd = addDays(created, 7 + Math.floor(Math.random() * 14));
+            const eta = addDays(etd, isFCL ? 15 + Math.floor(Math.random() * 20) : 2 + Math.floor(Math.random() * 5));
+            const freight = isFCL ? 1800 + Math.floor(Math.random() * 3200) : 2500 + Math.floor(Math.random() * 5000);
+            const shipId = (status === 'ALLOCATED' || status === 'USED') ? pick(shipmentIds) : null;
 
-            const bookNum = `BK-R-${type === 'FCL' ? 'F' : 'A'}${String(i + 1).padStart(3, '0')}`;
-            const shipment = (status === 'ALLOCATED' || status === 'USED') && shipmentData.length > 0 ? pick(shipmentData) : null;
-
-            const res = await client.query(
+            const r = await client.query(
                 `INSERT INTO bookings (booking_number, type, status, forwarder_id,
                     origin_port, destination_port, vessel_flight, voyage_number,
                     shipping_line, container_type, container_count,
-                    freight_rate_usd, etd, eta,
-                    shipment_id, created_by, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-                 ON CONFLICT (booking_number) DO UPDATE SET status = EXCLUDED.status
-                 RETURNING id`,
-                [bookNum, type, status, pick(forwarderIds),
-                    port.origin, port.dest,
-                    isFCL ? pick(vessels) : pick(flights),
-                    isFCL ? `V${100 + i}E` : null,
-                    isFCL ? pick(shippingLines) : pick(airlines),
-                    isFCL ? pick(containerTypes) : null,
-                    isFCL ? (1 + Math.floor(Math.random() * 3)) : (10 + Math.floor(Math.random() * 50)),
-                    freightRate, fmt(etd), fmt(eta),
-                    shipment ? shipment.id : null, adminId, fmtTs(createdAt)]
+                    freight_rate_usd, etd, eta, shipment_id, created_by, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
+                [`BK-${ts}-${type[0]}${String(i + 1).padStart(3, '0')}`, type, status, pick(forwarderIds),
+                port.o, port.d, isFCL ? pick(vessels) : pick(flights), isFCL ? `V${100 + i}E` : null,
+                isFCL ? pick(shippingLines) : pick(airlines), isFCL ? pick(containerTypes) : null,
+                isFCL ? 1 + Math.floor(Math.random() * 3) : 10 + Math.floor(Math.random() * 50),
+                    freight, fmt(etd), fmt(eta), shipId, adminId, fmtTs(created)]
             );
+            const bId = r.rows[0].id;
+            bookingIds.push(bId);
 
-            const bookingId = res.rows[0].id;
-            bookingData.push({ id: bookingId, bookNum, status });
-
-            // Insert booking deadlines into booking_deadlines table
+            // Deadlines
             if (status !== 'CANCELLED' && status !== 'USED') {
-                const cutOffSI = subtractDays(etd, 5 + Math.floor(Math.random() * 3));
-                const cutOffVGM = subtractDays(etd, 3 + Math.floor(Math.random() * 2));
-                const cutOffCY = subtractDays(etd, 2 + Math.floor(Math.random() * 2));
-                try {
-                    await client.query(
-                        `INSERT INTO booking_deadlines (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
-                         VALUES ($1, $2, $3, $4)`,
-                        [bookingId, fmtTs(cutOffSI), fmtTs(cutOffVGM), fmtTs(cutOffCY)]
-                    );
-                } catch (e) { /* deadline already exists */ }
-            }
-        }
-
-        // 5 URGENT bookings for Risk page
-        const urgentBookings = [
-            { suffix: 'URG01', etdOffset: 1, siOffset: 0, label: 'SI TODAY' },
-            { suffix: 'URG02', etdOffset: 2, siOffset: -1, label: 'SI OVERDUE' },
-            { suffix: 'URG03', etdOffset: 3, siOffset: 1, label: 'VGM tomorrow' },
-            { suffix: 'URG04', etdOffset: 4, siOffset: 2, label: 'Cargo 2 days' },
-            { suffix: 'URG05', etdOffset: 6, siOffset: 3, label: 'SI 3 days' },
-        ];
-        for (const ub of urgentBookings) {
-            const port = pick(ports);
-            const etd = addDays(today, ub.etdOffset);
-            const bookNum = `BK-R-${ub.suffix}`;
-            const status = pick(['CONFIRMED', 'PENDING', 'ALLOCATED']);
-
-            const res = await client.query(
-                `INSERT INTO bookings (booking_number, type, status, forwarder_id,
-                    origin_port, destination_port, vessel_flight, voyage_number,
-                    shipping_line, container_type, container_count,
-                    freight_rate_usd, etd, eta, created_by, created_at)
-                 VALUES ($1, 'FCL', $2, $3, $4, $5, $6, $7, $8, '40RF', 2,
-                    $9, $10, $11, $12, $13)
-                 ON CONFLICT (booking_number) DO UPDATE SET
-                    status = EXCLUDED.status, etd = EXCLUDED.etd, eta = EXCLUDED.eta
-                 RETURNING id`,
-                [bookNum, status, pick(forwarderIds),
-                    port.origin, port.dest, pick(vessels), `V-U${ub.etdOffset}`,
-                    pick(shippingLines),
-                    2800 + Math.floor(Math.random() * 2000),
-                    fmt(etd), fmt(addDays(etd, 20)),
-                    adminId, fmtTs(subtractDays(today, 5))]
-            );
-
-            // Insert urgent deadlines
-            const siDate = addDays(today, ub.siOffset);
-            try {
                 await client.query(
                     `INSERT INTO booking_deadlines (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
                      VALUES ($1, $2, $3, $4)`,
-                    [res.rows[0].id, fmtTs(siDate), fmtTs(addDays(siDate, 1)), fmtTs(addDays(siDate, 2))]
+                    [bId, fmtTs(subDays(etd, 5 + Math.floor(Math.random() * 3))),
+                        fmtTs(subDays(etd, 3 + Math.floor(Math.random() * 2))),
+                        fmtTs(subDays(etd, 2 + Math.floor(Math.random() * 2)))]
                 );
-            } catch (e) { /* deadline exists */ }
+            }
         }
 
-        // ========================================
-        // CREATE 20 INVOICES
-        // ========================================
-        const invoiceCategories = ['Freight', 'Terminal Handling', 'Customs Clearance', 'Insurance', 'Documentation', 'Trucking'];
+        // 5 URGENT bookings → Risk page
+        const urgents = [
+            { off: 1, si: 0 }, { off: 2, si: -1 }, { off: 3, si: 1 }, { off: 4, si: 2 }, { off: 6, si: 3 }
+        ];
+        for (let u = 0; u < urgents.length; u++) {
+            const ub = urgents[u];
+            const port = pick(ports);
+            const etd = addDays(today, ub.off);
+            const r = await client.query(
+                `INSERT INTO bookings (booking_number, type, status, forwarder_id,
+                    origin_port, destination_port, vessel_flight, shipping_line,
+                    container_type, container_count, freight_rate_usd, etd, eta, created_by, created_at)
+                 VALUES ($1,'FCL',$2,$3,$4,$5,$6,$7,'40RF',2,$8,$9,$10,$11,$12) RETURNING id`,
+                [`BK-${ts}-U${u + 1}`, pick(['CONFIRMED', 'PENDING', 'ALLOCATED']), pick(forwarderIds),
+                port.o, port.d, pick(vessels), pick(shippingLines),
+                2800 + Math.floor(Math.random() * 2000), fmt(etd), fmt(addDays(etd, 20)),
+                    adminId, fmtTs(subDays(today, 5))]
+            );
+            const siDate = addDays(today, ub.si);
+            await client.query(
+                `INSERT INTO booking_deadlines (booking_id, cut_off_si, cut_off_vgm, cut_off_cy)
+                 VALUES ($1, $2, $3, $4)`,
+                [r.rows[0].id, fmtTs(siDate), fmtTs(addDays(siDate, 1)), fmtTs(addDays(siDate, 2))]
+            );
+        }
+
+        // ══════════════════════════════════════
+        // 20 INVOICES
+        // ══════════════════════════════════════
+        const cats = ['Freight', 'Terminal Handling', 'Customs Clearance', 'Insurance', 'Documentation', 'Trucking'];
         for (let i = 0; i < 20; i++) {
             const daysAgo = Math.floor(i / 4) * 30 + Math.floor(Math.random() * 25);
-            const createdAt = subtractDays(today, daysAgo);
-            const category = pick(invoiceCategories);
-
-            let amount;
-            if (category === 'Freight') amount = 2000 + Math.floor(Math.random() * 5000);
-            else if (category === 'Terminal Handling') amount = 300 + Math.floor(Math.random() * 700);
-            else if (category === 'Customs Clearance') amount = 200 + Math.floor(Math.random() * 500);
-            else if (category === 'Insurance') amount = 100 + Math.floor(Math.random() * 300);
-            else if (category === 'Trucking') amount = 400 + Math.floor(Math.random() * 600);
-            else amount = 50 + Math.floor(Math.random() * 200);
-
+            const created = subDays(today, daysAgo);
+            const cat = pick(cats);
+            const amt = cat === 'Freight' ? 2000 + Math.floor(Math.random() * 5000)
+                : cat === 'Terminal Handling' ? 300 + Math.floor(Math.random() * 700)
+                    : cat === 'Trucking' ? 400 + Math.floor(Math.random() * 600)
+                        : 100 + Math.floor(Math.random() * 400);
             let status;
             if (daysAgo > 90) status = 'PAID';
             else if (daysAgo > 60) status = pick(['PAID', 'PAID', 'OVERDUE']);
             else if (daysAgo > 30) status = pick(['PAID', 'PENDING', 'OVERDUE']);
             else status = pick(['PENDING', 'PENDING', 'PAID']);
 
-            const shipment = shipmentData.length > 0 ? pick(shipmentData) : null;
-            const invoiceNum = `INV-R-${String(i + 1).padStart(3, '0')}`;
-
             await client.query(
-                `INSERT INTO invoices (invoice_number, shipment_id, vendor_name, category,
-                    amount_usd, status, due_date, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                 ON CONFLICT (invoice_number) DO UPDATE SET amount_usd = EXCLUDED.amount_usd`,
-                [invoiceNum, shipment?.id || null,
-                    pick(['Vinalink Logistics', 'Gemadept Shipping', 'Bee Logistics', 'Cat Lai Terminal', 'TBS Customs Broker']),
-                    category, amount, status,
-                    fmt(addDays(createdAt, 30)),
-                    fmtTs(createdAt)]
+                `INSERT INTO invoices (invoice_number, shipment_id, vendor_name, category, amount_usd, status, due_date, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                [`INV-${ts}-${String(i + 1).padStart(3, '0')}`, pick(shipmentIds),
+                pick(vendorNames), cat, amt, status, fmt(addDays(created, 30)), fmtTs(created)]
             );
         }
 
-        // ========================================
-        // DOCUMENTS, NOTIFICATIONS, TASKS
-        // ========================================
+        // ══════════════════════════════════════
+        // 15 DOCUMENTS
+        // ══════════════════════════════════════
         const docTypes = ['Bill of Lading', 'Commercial Invoice', 'Packing List', 'Certificate of Origin', 'Phytosanitary Certificate'];
         for (let i = 0; i < 15; i++) {
-            const shipment = shipmentData.length > 0 ? pick(shipmentData) : null;
-            if (!shipment) continue;
-            const docType = docTypes[i % docTypes.length];
-            const docNum = `DOC-R-${String(i + 1).padStart(3, '0')}`;
-            const status = Math.random() > 0.3 ? 'VALIDATED' : pick(['UPLOADED', 'REJECTED']);
+            const dt = docTypes[i % docTypes.length];
+            const stt = Math.random() > 0.3 ? 'VALIDATED' : pick(['UPLOADED', 'REJECTED']);
             await client.query(
                 `INSERT INTO documents (document_number, shipment_id, document_type, status, file_path, file_name, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                 ON CONFLICT (document_number) DO NOTHING`,
-                [docNum, shipment.id, docType, status, `/uploads/${docType.replace(/ /g, '_').toLowerCase()}.pdf`, `${docType.replace(/ /g, '_').toLowerCase()}.pdf`, adminId]
+                 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+                [`DOC-${ts}-${String(i + 1).padStart(3, '0')}`, pick(shipmentIds), dt, stt,
+                `/uploads/${dt.replace(/ /g, '_').toLowerCase()}.pdf`, `${dt.replace(/ /g, '_').toLowerCase()}.pdf`, adminId]
             );
         }
 
-        // Notifications
+        // ══════════════════════════════════════
+        // NOTIFICATIONS (8)
+        // ══════════════════════════════════════
         const notifs = [
-            { type: 'DEADLINE_WARNING', title: '⏰ SI Cut-off approaching for BK-R-URG01', message: 'SI deadline is TODAY.', priority: 'HIGH' },
-            { type: 'DEADLINE_CRITICAL', title: '🔴 VGM cut-off OVERDUE for BK-R-URG02', message: 'VGM deadline has passed.', priority: 'HIGH' },
-            { type: 'DOCUMENT_ISSUE', title: '📋 Phytosanitary Cert rejected', message: 'Certificate rejected by customs.', priority: 'MEDIUM' },
-            { type: 'SHIPMENT_DELAYED', title: '🚢 Vessel delay: EVER GIVEN ETA +3 days', message: 'Port congestion.', priority: 'MEDIUM' },
-            { type: 'COST_ALERT', title: '💰 Invoice INV-R-005 overdue 15 days', message: 'Freight invoice overdue.', priority: 'HIGH' },
-            { type: 'QUALITY_ALERT', title: '🍎 Temperature alert: Container', message: 'Reading 4.2°C exceeds 2°C threshold.', priority: 'HIGH' },
-            { type: 'COMPLIANCE', title: '📜 Export license expiring', message: 'License expires in 7 days.', priority: 'MEDIUM' },
-            { type: 'BOOKING_CONFIRMED', title: '✅ Booking confirmed by Maersk', message: 'Container allocation confirmed.', priority: 'LOW' },
+            { t: 'DEADLINE_WARNING', ti: '⏰ SI Cut-off approaching', m: 'SI deadline is TODAY.', p: 'HIGH' },
+            { t: 'DEADLINE_CRITICAL', ti: '🔴 VGM cut-off OVERDUE', m: 'VGM deadline has passed.', p: 'HIGH' },
+            { t: 'DOCUMENT_ISSUE', ti: '📋 Phytosanitary Cert rejected', m: 'Certificate rejected by customs.', p: 'MEDIUM' },
+            { t: 'SHIPMENT_DELAYED', ti: '🚢 Vessel delay: ETA +3 days', m: 'Port congestion at destination.', p: 'MEDIUM' },
+            { t: 'COST_ALERT', ti: '💰 Invoice overdue 15 days', m: 'Freight invoice overdue.', p: 'HIGH' },
+            { t: 'QUALITY_ALERT', ti: '🍎 Temperature alert: Container', m: 'Reading 4.2°C exceeds 2°C.', p: 'HIGH' },
+            { t: 'COMPLIANCE', ti: '📜 Export license expiring', m: 'Expires in 7 days.', p: 'MEDIUM' },
+            { t: 'BOOKING_CONFIRMED', ti: '✅ Booking confirmed by Maersk', m: 'Container allocation confirmed.', p: 'LOW' },
         ];
         for (const n of notifs) {
             await client.query(
                 `INSERT INTO notifications (user_id, type, title, message, priority, is_read, created_at)
-                 VALUES ($1, $2, $3, $4, $5, false, $6)`,
-                [adminId, n.type, n.title, n.message, n.priority, fmtTs(subtractDays(today, Math.floor(Math.random() * 5)))]
+                 VALUES ($1,$2,$3,$4,$5,false,$6)`,
+                [adminId, n.t, n.ti, n.m, n.p, fmtTs(subDays(today, Math.floor(Math.random() * 5)))]
             );
         }
 
-        // Tasks
+        // ══════════════════════════════════════
+        // TASKS (10)
+        // ══════════════════════════════════════
         const tasks = [
-            { type: 'DOCUMENT_PREP', title: 'Submit SI for BK-R-URG01', status: 'PENDING', priority: 'HIGH', dueOffset: 0 },
-            { type: 'DOCUMENT_PREP', title: 'Arrange VGM weighing', status: 'PENDING', priority: 'MEDIUM', dueOffset: 1 },
-            { type: 'DOCUMENT_PREP', title: 'Prepare Phytosanitary Certificate', status: 'IN_PROGRESS', priority: 'HIGH', dueOffset: 2 },
-            { type: 'LOGISTICS', title: 'Book trucking for cargo delivery', status: 'PENDING', priority: 'MEDIUM', dueOffset: 3 },
-            { type: 'CUSTOMS', title: 'Submit Customs Declaration', status: 'COMPLETED', priority: 'HIGH', dueOffset: -2 },
-            { type: 'DOCUMENT_PREP', title: 'Verify Bill of Lading draft', status: 'IN_PROGRESS', priority: 'HIGH', dueOffset: 1 },
-            { type: 'LOGISTICS', title: 'Confirm loading schedule', status: 'PENDING', priority: 'MEDIUM', dueOffset: 2 },
-            { type: 'DOCUMENT_PREP', title: 'Review Commercial Invoice', status: 'COMPLETED', priority: 'LOW', dueOffset: -5 },
-            { type: 'PAYMENT', title: 'Arrange insurance for cargo', status: 'PENDING', priority: 'HIGH', dueOffset: 4 },
-            { type: 'PAYMENT', title: 'Send arrival notice', status: 'COMPLETED', priority: 'MEDIUM', dueOffset: -1 },
+            { tp: 'DOCUMENT_PREP', ti: 'Submit SI for urgent booking', s: 'PENDING', p: 'HIGH', d: 0 },
+            { tp: 'DOCUMENT_PREP', ti: 'Arrange VGM weighing', s: 'PENDING', p: 'MEDIUM', d: 1 },
+            { tp: 'DOCUMENT_PREP', ti: 'Prepare Phytosanitary Certificate', s: 'IN_PROGRESS', p: 'HIGH', d: 2 },
+            { tp: 'LOGISTICS', ti: 'Book trucking for cargo', s: 'PENDING', p: 'MEDIUM', d: 3 },
+            { tp: 'CUSTOMS', ti: 'Submit Customs Declaration', s: 'COMPLETED', p: 'HIGH', d: -2 },
+            { tp: 'DOCUMENT_PREP', ti: 'Verify Bill of Lading draft', s: 'IN_PROGRESS', p: 'HIGH', d: 1 },
+            { tp: 'LOGISTICS', ti: 'Confirm loading schedule', s: 'PENDING', p: 'MEDIUM', d: 2 },
+            { tp: 'DOCUMENT_PREP', ti: 'Review Commercial Invoice', s: 'COMPLETED', p: 'LOW', d: -5 },
+            { tp: 'PAYMENT', ti: 'Arrange cargo insurance', s: 'PENDING', p: 'HIGH', d: 4 },
+            { tp: 'PAYMENT', ti: 'Send arrival notice', s: 'COMPLETED', p: 'MEDIUM', d: -1 },
         ];
         for (const t of tasks) {
             await client.query(
                 `INSERT INTO tasks (task_type, title, status, priority, deadline, assigned_to, created_by, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [t.type, t.title, t.status, t.priority, fmtTs(addDays(today, t.dueOffset)), adminId, adminId, fmtTs(subtractDays(today, 3))]
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                [t.tp, t.ti, t.s, t.p, fmtTs(addDays(today, t.d)), adminId, adminId, fmtTs(subDays(today, 3))]
             );
         }
 
-        // Alerts for Risk page
+        // ALERTS (3)
         const alerts = [
-            { type: 'DEADLINE', severity: 'CRITICAL', title: 'SI Cut-off TODAY', description: 'BK-R-URG01 SI deadline expires today.' },
-            { type: 'DOCUMENT', severity: 'HIGH', title: 'Missing Phytosanitary Certificate', description: 'Shipment SHP-R-003 missing required cert.' },
-            { type: 'COMPLIANCE', severity: 'MEDIUM', title: 'Export license renewal needed', description: 'Japan market license expires in 7 days.' },
+            { t: 'DEADLINE', s: 'CRITICAL', ti: 'SI Cut-off TODAY', desc: 'Urgent booking SI deadline today.' },
+            { t: 'DOCUMENT', s: 'HIGH', ti: 'Missing Phytosanitary Certificate', desc: 'Required cert missing.' },
+            { t: 'COMPLIANCE', s: 'MEDIUM', ti: 'Export license renewal needed', desc: 'Japan license expires in 7d.' },
         ];
         for (const a of alerts) {
             await client.query(
                 `INSERT INTO alerts (type, severity, title, description, is_resolved, created_at)
-                 VALUES ($1, $2, $3, $4, false, $5)`,
-                [a.type, a.severity, a.title, a.description, fmtTs(subtractDays(today, 1))]
+                 VALUES ($1,$2,$3,$4,false,$5)`,
+                [a.t, a.s, a.ti, a.desc, fmtTs(subDays(today, 1))]
             );
         }
 
         await client.query('COMMIT');
-
         return {
             success: true,
-            message: 'Rich sample data created successfully for Analytics/Risk/Reports',
+            message: 'Rich sample data seeded successfully! 🎉',
             summary: {
                 customers: customerIds.length,
                 forwarders: forwarderIds.length,
-                shipments: shipmentData.length,
-                bookings: bookingData.length + urgentBookings.length,
+                shipments: 25,
+                bookings: '35 + 5 urgent = 40',
                 invoices: 20,
                 documents: 15,
-                notifications: notifs.length,
-                tasks: tasks.length,
-                alerts: alerts.length,
-                urgentBookingsForRisk: urgentBookings.length,
+                notifications: 8,
+                tasks: 10,
+                alerts: 3,
             }
         };
     } catch (error) {
