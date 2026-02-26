@@ -104,55 +104,54 @@ export function BookingList({ type }: BookingListProps) {
         navigate(`/bookings/${bookingId}`);
     };
 
-    const handleConfirmBooking = async (bookingId: string) => {
-        const confirmed = window.confirm('Confirm this booking? This will trigger the workflow and create tasks.');
-        if (!confirmed) return;
+    // Modal states for Electron compatibility (window.prompt/confirm don't work)
+    const [cancelTarget, setCancelTarget] = useState<BookingData | null>(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<BookingData | null>(null);
 
+    const handleConfirmBooking = async (bookingId: string) => {
         try {
             await fetchApi(`/api/bookings/${bookingId}/confirm`, {
                 method: 'POST',
             });
             toast.success('Booking confirmed! Workflow tasks created.');
+            setConfirmTarget(null);
             fetchBookings();
         } catch (error: any) {
             toast.error(error?.message || 'Failed to confirm booking');
         }
     };
 
-    const handleCancelBooking = async (booking: BookingData) => {
-        const reason = window.prompt(
-            `Cancel booking ${booking.booking_number}?\n\nPlease enter a reason for cancellation:`
-        );
-        if (reason === null) return;
-        if (!reason.trim()) {
+    const handleCancelBooking = async () => {
+        if (!cancelTarget || !cancelReason.trim()) {
             toast.error('Cancellation reason is required');
             return;
         }
 
         try {
-            await fetchApi(`/api/bookings/${booking.id}/cancel`, {
+            await fetchApi(`/api/bookings/${cancelTarget.id}/cancel`, {
                 method: 'POST',
-                body: JSON.stringify({ reason }),
+                body: JSON.stringify({ reason: cancelReason }),
             });
-            toast.success(`Booking ${booking.booking_number} cancelled`);
+            toast.success(`Booking ${cancelTarget.booking_number} cancelled`);
+            setCancelTarget(null);
+            setCancelReason('');
             fetchBookings();
         } catch (error: any) {
             toast.error(error?.message || 'Failed to cancel booking');
         }
     };
 
-    const handleDeleteBooking = async (booking: BookingData) => {
-        const confirmed = window.confirm(
-            `Are you sure you want to delete booking ${booking.booking_number}?\n\nThis action cannot be undone.`
-        );
-
-        if (!confirmed) return;
+    const handleDeleteBooking = async () => {
+        if (!deleteTarget) return;
 
         try {
-            await fetchApi(`/api/bookings/${booking.id}`, {
+            await fetchApi(`/api/bookings/${deleteTarget.id}`, {
                 method: 'DELETE',
             });
-            toast.success(`Booking ${booking.booking_number} deleted successfully`);
+            toast.success(`Booking ${deleteTarget.booking_number} deleted successfully`);
+            setDeleteTarget(null);
             fetchBookings();
         } catch (error: any) {
             toast.error(error?.message || 'Failed to delete booking');
@@ -447,7 +446,7 @@ export function BookingList({ type }: BookingListProps) {
                                                     <Button
                                                         size="sm"
                                                         className="flex-1"
-                                                        onClick={() => handleConfirmBooking(booking.id)}
+                                                        onClick={() => setConfirmTarget(booking.id)}
                                                     >
                                                         Confirm
                                                     </Button>
@@ -457,7 +456,7 @@ export function BookingList({ type }: BookingListProps) {
                                                         size="sm"
                                                         variant="outline"
                                                         className="text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/50"
-                                                        onClick={() => handleCancelBooking(booking)}
+                                                        onClick={() => setCancelTarget(booking)}
                                                         title="Cancel booking (preserves record)"
                                                     >
                                                         Cancel
@@ -468,7 +467,7 @@ export function BookingList({ type }: BookingListProps) {
                                                         size="sm"
                                                         variant="outline"
                                                         className="text-red-400 hover:bg-red-500/10 hover:border-red-500/50"
-                                                        onClick={() => handleDeleteBooking(booking)}
+                                                        onClick={() => setDeleteTarget(booking)}
                                                         title="Permanently delete"
                                                     >
                                                         Delete
@@ -507,6 +506,56 @@ export function BookingList({ type }: BookingListProps) {
                         fetchBookings();
                     }}
                 />
+            )}
+
+            {/* Cancel Booking Modal */}
+            {cancelTarget && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => { setCancelTarget(null); setCancelReason(''); }}>
+                    <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-[hsl(var(--foreground))] mb-2">Cancel Booking {cancelTarget.booking_number}?</h3>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mb-4">This will cancel the booking and related tasks. The record will be preserved.</p>
+                        <textarea
+                            className="w-full p-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))] text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                            rows={3}
+                            placeholder="Reason for cancellation (required)..."
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            autoFocus
+                        />
+                        <div className="flex gap-2 mt-4 justify-end">
+                            <Button variant="outline" size="sm" onClick={() => { setCancelTarget(null); setCancelReason(''); }}>Back</Button>
+                            <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={!cancelReason.trim()} onClick={handleCancelBooking}>Confirm Cancel</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Booking Modal */}
+            {confirmTarget && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setConfirmTarget(null)}>
+                    <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-[hsl(var(--foreground))] mb-2">Confirm Booking?</h3>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mb-4">This will trigger the workflow and create tasks for this booking.</p>
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="outline" size="sm" onClick={() => setConfirmTarget(null)}>Back</Button>
+                            <Button size="sm" onClick={() => handleConfirmBooking(confirmTarget)}>Confirm</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Booking Modal */}
+            {deleteTarget && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setDeleteTarget(null)}>
+                    <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-red-400 mb-2">Delete Booking {deleteTarget.booking_number}?</h3>
+                        <p className="text-sm text-[hsl(var(--muted-foreground))] mb-4">This action cannot be undone. The booking will be permanently removed.</p>
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)}>Back</Button>
+                            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={handleDeleteBooking}>Delete</Button>
+                        </div>
+                    </div>
+                </div>
             )}
         </>
     );
