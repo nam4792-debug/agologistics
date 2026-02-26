@@ -1136,4 +1136,16 @@ router.post('/sample-data', async (req, res) => {
     }
 });
 
+// POST /api/seed/rich-data - Create comprehensive sample data for Analytics/Risk/Reports
+router.post('/rich-data', async (req, res) => {
+    try {
+        const { seedRichData } = require('../../seed-rich-data');
+        const result = await seedRichData();
+        res.json(result);
+    } catch (error) {
+        console.error('Rich data seed error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
